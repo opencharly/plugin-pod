@@ -9,7 +9,7 @@
 // split: the pod deploy SUBSTRATE (deploy:pod) stays out-of-process in candy/plugin-deploy-pod,
 // untouched by this candy's placement.
 //
-// Each command word is INDEPENDENT (no shared parent — unlike `charly fleet …`'s single grouped
+// Each command word is INDEPENDENT (no shared parent — unlike `charly deploy …`'s single grouped
 // word): some (restart) are pure sdk/kit + sdk/deploykit logic with NO host coupling; others
 // (start/stop/logs/shell/…) need the provider REGISTRY (ResolveTarget, the plugin loader) — a
 // kernel M-mechanism a plugin cannot hold — and reach it over HostBuild seams that reconstruct the

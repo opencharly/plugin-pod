@@ -12,7 +12,7 @@ import (
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/sdk/loaderkit"
-	"github.com/opencharly/spec/fleet"
+	"github.com/opencharly/spec/deploy"
 	"github.com/opencharly/spec/spec"
 )
 
@@ -41,10 +41,10 @@ import (
 // kind into this one), deferred here as the LAST step — same shape as pod start/stop's own bracket.
 //
 // RDD caught a real latent placement bug mid-port (see remove_orchestration.go's header): two
-// deploykit calls that "looked" portable (resolveSidecarNames' LoadFleetConfig,
+// deploykit calls that "looked" portable (resolveSidecarNames' LoadDeployConfig,
 // runPodRemove's ResolveBoxEngineForDeploy) transitively depend on deploykit.DeployStateHost,
 // which only charly-core's own init() populates — so both were rerouted through their own
-// EXISTING seams (the host fleet-config loader, now retired by the loaderkit helper, and
+// EXISTING seams (the host deploy-config loader, now retired by the loaderkit helper, and
 // pod-config-box-engine) instead of calling deploykit directly.
 
 // StartCmd launches a container with supervisord in the background — the `charly start` grammar.
@@ -87,7 +87,7 @@ func (c *StartCmd) Run() error {
 // dispatchLifecycleTarget operates on this *spec.Deploy instead of re-reading the per-host config
 // itself (the config READ is a plugin loading capability, not a host M; #55 coneC Unit C2 moved
 // the resolver from deploykit.ResolveLifecycleDeployNodeViaSeam — the deleted
-// host fleet-config loader-seam round-trip — to the cycle-free plugin-side
+// host deploy-config loader-seam round-trip — to the cycle-free plugin-side
 // loaderkit.ResolveLifecycleDeployNodeViaExecutor, byte-identical to the retired core
 // resolveLifecycleDeployNode). The box/instance MUST match the request's Box/Instance — the host
 // derives deployName = DeployKey(req.Box, req.Instance), which must key the SAME node.
@@ -395,9 +395,9 @@ type CpCmd struct {
 
 // ConfigCmd groups box configuration subcommands — the `charly config` grammar. Default
 // subcommand (no keyword): full setup (quadlet + secrets + enc). Every leaf's actual body is
-// deeply core-type-coupled (FleetConfig/ResolvedSidecar/enc*/deploykit.CleanDeployEntry, and
+// deeply core-type-coupled (DeployConfig/ResolvedSidecar/enc*/deploykit.CleanDeployEntry, and
 // Setup is ALSO constructed directly, by its EXACT unchanged name, by from_box_pod.go (the
-// `charly fleet from-box` pod path, K-wave 2 cone R2 — formerly charly/fleet_from_box_cmd.go) —
+// `charly deploy from-box` pod path, K-wave 2 cone R2 — formerly charly/fleet_from_box_cmd.go) —
 // P13-kernel, out of this wave's scope — so the core struct cannot rename/move), so each leaf
 // forwards via its own HostBuild("pod-config-<leaf>") seam.
 type ConfigCmd struct {
@@ -603,7 +603,7 @@ func (c *UpdateCmd) Run() error {
 // still resolve, and dotted nested paths (`a.b.c`) still walk. On miss the error reports the full
 // key. The "deploy-plugins-connect" preamble connects the deployment's out-of-tree plugin candies
 // (the host's ResolveTarget needs them) and returns the project dir the loader loads from — the
-// SAME preamble command:fleet's resolveTreeViaLoader runs. Relocated from
+// SAME preamble command:deploy's resolveTreeViaLoader runs. Relocated from
 // charly/update_deploy_dispatch.go (K-wave 2 cone CONTESTED).
 func resolveUpdateDeployNode(image, instance string) (*spec.Deploy, error) {
 	if cmdExec == nil {
@@ -621,12 +621,12 @@ func resolveUpdateDeployNode(image, instance string) (*spec.Deploy, error) {
 }
 
 // lookupDeployNode walks the merged deploy tree for the FULL deploy key — the pure
-// fleet.ResolveNodePath step, split out for the unit test. deployKey applies the -i instance
+// deploy.ResolveNodePath step, split out for the unit test. deployKey applies the -i instance
 // (returning the bare or dotted-nested name unchanged when instance is empty), so an
 // instance-only `<base>/<inst>` entry resolves and a bare-base lookup correctly does NOT match it.
-func lookupDeployNode(tree map[string]spec.FleetNode, image, instance string) (*spec.Deploy, error) {
+func lookupDeployNode(tree map[string]spec.DeployNode, image, instance string) (*spec.Deploy, error) {
 	key := spec.DeployKey(image, instance)
-	node, _, err := fleet.ResolveNodePath(tree, key)
+	node, _, err := deploy.ResolveNodePath(tree, key)
 	if err != nil || node == nil {
 		return nil, fmt.Errorf("no deploy named %q in charly.yml. To refresh an image artifact only, use 'charly box pull %s'", key, image)
 	}

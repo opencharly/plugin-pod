@@ -15,7 +15,7 @@ import (
 // bare base name and failed with `no deploy named "<base>"`. Relocated from
 // charly/update_deploy_dispatch_test.go (K-wave 2 cone CONTESTED) with the function it tests.
 func TestLookupDeployNode(t *testing.T) {
-	tree := map[string]spec.FleetNode{
+	tree := map[string]spec.DeployNode{
 		"foo/bar": {Target: "pod", Image: "foo"},
 		"baz":     {Target: "pod", Image: "baz"},
 		// Nested topology — exercises the dotted-path walk, which must keep
@@ -23,8 +23,8 @@ func TestLookupDeployNode(t *testing.T) {
 		// instance is empty.
 		"stack": {
 			Target: "vm",
-			Children: map[string]*spec.FleetNode{
-				"web": {Target: "pod", Image: "web"},
+			Member: []spec.Member{
+				{Name: "web", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod", Image: "web"}},
 			},
 		},
 	}
@@ -94,7 +94,7 @@ func TestNoteUpdateDisposability(t *testing.T) {
 	*fDisposable = false
 	cases := []struct {
 		name     string
-		node     *spec.FleetNode
+		node     *spec.DeployNode
 		image    string
 		instance string
 		wantNote bool
@@ -102,33 +102,33 @@ func TestNoteUpdateDisposability(t *testing.T) {
 	}{
 		{
 			name:     "explicit disposable true — no note",
-			node:     &spec.FleetNode{Disposable: tDisposable},
+			node:     &spec.DeployNode{Disposable: tDisposable},
 			image:    "ok-pod",
 			wantNote: false,
 		},
 		{
 			name:     "ephemeral implies disposable — no note",
-			node:     &spec.FleetNode{Ephemeral: &spec.EphemeralLifetime{}},
+			node:     &spec.DeployNode{Ephemeral: &spec.EphemeralLifetime{}},
 			image:    "scratch-pod",
 			wantNote: false,
 		},
 		{
 			name:     "absent disposable — note, NOT a refusal",
-			node:     &spec.FleetNode{},
+			node:     &spec.DeployNode{},
 			image:    "prod-api",
 			wantNote: true,
 			want:     []string{"prod-api", "not marked", "disposable: true", "lifecycle: (unset)", "per your explicit"},
 		},
 		{
 			name:     "explicit disposable: false — note",
-			node:     &spec.FleetNode{Disposable: fDisposable, Lifecycle: "prod"},
+			node:     &spec.DeployNode{Disposable: fDisposable, Lifecycle: "prod"},
 			image:    "locked-api",
 			wantNote: true,
 			want:     []string{"locked-api", "lifecycle: prod"},
 		},
 		{
 			name:     "instance form includes the slash key",
-			node:     &spec.FleetNode{Disposable: fDisposable},
+			node:     &spec.DeployNode{Disposable: fDisposable},
 			image:    "versa",
 			instance: "ecovoyage",
 			wantNote: true,
@@ -136,7 +136,7 @@ func TestNoteUpdateDisposability(t *testing.T) {
 		},
 		{
 			name:     "lifecycle dev alone — note (charly update still obeys)",
-			node:     &spec.FleetNode{Lifecycle: "dev"},
+			node:     &spec.DeployNode{Lifecycle: "dev"},
 			image:    "dev-bench",
 			wantNote: true,
 			want:     []string{"dev-bench", "lifecycle: dev"},
