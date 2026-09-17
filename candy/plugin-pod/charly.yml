@@ -36,3 +36,116 @@ plugin-pod:
               context:
                 - build
               command: "test -f go.mod && test -f plugin.go && test -f command.go && test -f pod_cmd.go"
+
+restart-skill:
+    skill:
+        name: restart
+        family: pod-verbs
+        owner: plugin-pod
+        description: |-
+            `charly restart <box>` — restart a deployment's service. Use to apply a changed
+            config, recover a wedged service, or cycle a container without a full
+            remove/config/start cycle.
+        triggers:
+            - "`charly restart` / restart a deployment / cycle a container"
+        content: |
+            # charly restart — restart a deployment's service
+
+            `charly restart <box> [-i <instance>]` restarts a deployment's service in place.
+            It is served by `candy/plugin-pod` (a `command:restart` plugin) and calls
+            `deploykit.RestartPodService` directly — no config re-provisioning, no image
+            transfer. For an update that pulls a new image, use `charly update` instead.
+
+            ## Usage
+
+            ```bash
+            charly restart my-app                 # restart the default instance
+            charly restart my-app -i second       # restart a named instance
+            charly restart ghcr.io/org/app        # remote ref is resolved to its box name
+            ```
+
+            ## When to use it
+
+            - a config change that needs the service re-read its files;
+            - a service that crashed or wedged and needs a clean cycle;
+            - cycling WITHOUT the quadlet/image work `charly update` performs.
+
+            ## Cross-References
+
+            - `/charly-core:charly-update` — update the image, then restart.
+            - `/charly-core:service` — restart ONE service inside a multi-service deployment.
+            - `/charly-core:start` / `/charly-core:stop` — lifecycle.
+
+volume-skill:
+    skill:
+        name: volume
+        family: pod-verbs
+        owner: plugin-pod
+        description: |-
+            `charly volume list` / `charly volume reset` — inspect and reset a deployment's
+            charly-managed named volumes. The charly-native replacement for ad-hoc
+            `podman volume ls/inspect/rm`.
+        triggers:
+            - "`charly volume` / list a deployment's volumes / reset a volume / wipe sidecar state / podman volume"
+        content: |
+            # charly volume — named-volume inspection and reset
+
+            `charly volume` manages a deployment's charly-managed named volumes (app + sidecar
+            alike). It is served by `candy/plugin-pod` (a `command:volume` plugin) and is the
+            charly-native replacement for ad-hoc `podman volume ls/inspect/rm`.
+
+            ## Command tree
+
+            - `charly volume list <box> [-i <instance>]` — list the deployment's named volumes
+              with their host mountpoints.
+            - `charly volume reset <box> <name> [-i <instance>]` — remove ONE named volume so
+              the next `charly start` recreates it fresh. `<name>` is bare
+              (e.g. `tailscale-state`) or the full `charly-<box>-<name>` form.
+
+            ## When to use it
+
+            Reset a volume to force re-initialization — a sidecar's state volume to force
+            re-auth, or a corrupted cache. The engine refuses an in-use volume, so a running
+            deployment surfaces an actionable error instead of silent data loss; stop the
+            deployment first (`charly stop <box>`).
+
+            ## Cross-References
+
+            - `/charly-core:stop` / `/charly-core:start` — stop before a reset, start to recreate.
+            - `/charly-automation:enc` — encrypted-volume semantics.
+
+cp-skill:
+    skill:
+        name: cp
+        family: pod-verbs
+        owner: plugin-pod
+        description: |-
+            `charly cp` — copy a file between the host and a running container (app or
+            sidecar). The charly-native replacement for ad-hoc `podman cp`.
+        triggers:
+            - "`charly cp` / copy a file into a container / copy out of a container / podman cp"
+        content: |
+            # charly cp — copy a file between the host and a container
+
+            `charly cp <box> <src> <dst>` copies a file between the host and a running
+            container (app or sidecar). It is served by `candy/plugin-pod` (a `command:cp`
+            plugin) and is the charly-native replacement for ad-hoc `podman cp`.
+
+            Exactly one of `<src>`/`<dst>` carries the `:` prefix marking the CONTAINER side
+            (the same convention as `cp`/`podman cp`):
+
+            ```bash
+            charly cp my-app ./config.toml :/etc/app/config.toml   # host -> container
+            charly cp my-app :/var/log/app.log ./app.log           # container -> host
+            charly cp my-app :/etc/x ./x --sidecar tailscale       # target a sidecar container
+            ```
+
+            ## Options
+
+            - `-i <instance>` — a named instance.
+            - `--sidecar <name>` — target the named SIDECAR container instead of the app.
+
+            ## Cross-References
+
+            - `/charly-core:shell` — interactive shell in the same container.
+            - `/charly-automation:sidecar` — the sidecar-container model.
