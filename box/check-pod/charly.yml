@@ -1,0 +1,117 @@
+check-pod:
+    candy:
+        base: quay.io/fedora/fedora-minimal:43
+        produce: []
+        description: |-
+            Combined fast check fixture — image/layer/pod/deploy-target mechanism smoke
+            Two-layer fedora-minimal image backing the check-pod kind:check bed (`charly check run check-pod`) — covers kind:box build, kind:candy composition order, kind:pod runtime (nc :18794 + supervisord), and deploy-target rendering (supervisord sleep).
+        distro:
+            - fedora:43
+            - fedora
+        candy:
+            - '@github.com/opencharly/layer-supervisord:v2026.240.0121'
+            - '@github.com/opencharly/layer-check-base-layer:v2026.239.1620'
+            - '@github.com/opencharly/layer-check-stack-layer:v2026.241.1216'
+            # The DUAL-PLACEMENT plugin candy: its baked `externalprobe` check rides in,
+            # and the verb dispatches via the COMPILED-IN provider (the candy is listed
+            # in charly.yml compiled_plugins, so registerCompiledPlugin registered it
+            # in-process and the loader's coexist switch skips the out-of-process host
+            # build). The SAME candy serves out-of-process when NOT compiled in.
+            - '@github.com/opencharly/plugin-example-external/candy/plugin-example-external:v2026.237.1420'
+            # BUILD-TIME plugin execution (operator-authorized). plugin-example-step
+            # provides verb:examplestep; examplestep-consumer's BUILD-context
+            # `plugin: examplestep` run-step drives the build-path plugin-connect +
+            # emitPluginFragment seam, so at image build the plugin's OpEmit bakes
+            # `RUN : > /opt/examplestep-baked` into the Containerfile. Mirrors the
+            # existing @github plugin-example-external + check-stack-layer
+            # build-time-act (unix_group groupadd) cross-repo pattern; the
+            # examplestep-build-baked check below proves it executed.
+            - '@github.com/opencharly/plugin-example-step/candy/plugin-example-step:v2026.237.1421'
+            - '@github.com/opencharly/layer-examplestep-consumer:v2026.241.1216'
+            # BUILD-TIME BUILDER plugin execution. plugin-example-builder provides
+            # builder:examplebuilder; examplebuilder-consumer's `external_builder:
+            # examplebuilder` drives emitExternalBuilderStages, so at image build the
+            # builder's OpResolve emits a FROM…AS stage that COPYs /opt/examplebuilder-artifact
+            # into the image. The examplebuilder-build-baked check below proves it executed.
+            - '@github.com/opencharly/plugin-example-builder/candy/plugin-example-builder:v2026.237.1420'
+            - '@github.com/opencharly/layer-examplebuilder-consumer:v2026.239.1621'
+        plan:
+            - check: the examplebuilder external builder plugin EXECUTED at image build — its OpResolve emitted a multi-stage builder that COPYd /opt/examplebuilder-artifact into the check-pod image (proves the build-time external-BUILDER seam emitExternalBuilderStages + Invoke(OpResolve))
+              id: examplebuilder-build-baked
+              exit_status: 0
+              command:
+                command: "test -f /opt/examplebuilder-artifact"
+                in_container: true
+              context:
+                - runtime
+            - check: the examplestep plugin EXECUTED at image build — its OpEmit baked /opt/examplestep-baked into the check-pod image (proves the operator-authorized build-time plugin-execution seam, where the build-path plugin connect + emitPluginFragment ran the external plugin during image generation)
+              id: examplestep-build-baked
+              exit_status: 0
+              command:
+                command: "test -f /opt/examplestep-baked"
+                in_container: true
+              context:
+                - runtime
+            - check: the exampleprobe plugin verb dispatches through the provider registry and passes (proves the unified-provider + generic plugin-verb foundation, baked into the check-pod image)
+              id: exampleprobe-baked
+              exampleprobe:
+                marker: check-pod-plugin-ok
+              context:
+                - runtime
+            - check: the matching plugin verb dispatches through the provider registry and passes (the matching verb is now a dedicated built-in plugin unit, baked into the check-pod image)
+              id: check-matching-plugin
+              matching: {matching: "opencharly", contains: {contains: "charly"}}
+              context:
+                - runtime
+            - check: the examplerunverb plugin verb dispatches IN-PROCESS via RunVerb keeping the live *Runner and passes (proves an execution-needing verb can be a built-in plugin unit, baked into the check-pod image)
+              id: check-runverb-plugin
+              examplerunverb:
+                marker: runverb-ok
+              context:
+                - runtime
+            - check: the dns plugin verb resolves localhost (the dns check verb is now a dedicated built-in plugin unit; corpus-unused so exercised here, baked into the check-pod image)
+              id: check-dns-plugin
+              dns: {dns: "localhost", resolvable: true}
+              context:
+                - runtime
+            - check: the interface plugin verb finds the loopback interface (the interface check verb is now a dedicated built-in plugin unit; corpus-unused so exercised here, baked into the check-pod image)
+              id: check-interface-plugin
+              interface: "lo"
+              context:
+                - runtime
+            - # The CHECK half of the dual-natured unix_group state-provision plugin verb: the
+              # group was created at IMAGE BUILD by the composed check-stack-layer's act step
+              # (check-stack-layer-unix-group-act, the act-emit enabler), so it is baked into the
+              # check-pod image and present at runtime. Proves check+act compose over the shared
+              # plugin path — the act emits a groupadd at build, the check probes it live.
+              check: the checkgrp group provisioned at image build by the unix_group act step is present (the check half of the dual-natured state-provision plugin verb)
+              id: check-unix-group-present
+              unix_group: "checkgrp"
+              context:
+                - runtime
+            - # The CHECK half of the dual-natured `user` state-provision plugin verb (getent
+              # passwd). root always exists in the pod, so it is the corpus-unused exercise that
+              # proves the user check verb dispatches through the provider registry at runtime.
+              check: the user check verb finds root via getent passwd (the user check verb is now a dedicated builtin state-provision plugin unit; corpus-unused so exercised here, baked into the check-pod image)
+              id: check-user-present
+              user: "root"
+              context:
+                - runtime
+            - # The CHECK half of the dual-natured `mount` state-provision plugin verb (findmnt).
+              # /proc is always mounted in the pod, so it is the corpus-unused exercise that proves
+              # the mount check verb dispatches through the provider registry at runtime.
+              check: the mount check verb finds the /proc mount via findmnt (the mount check verb is now a dedicated builtin state-provision plugin unit; corpus-unused so exercised here, baked into the check-pod image)
+              id: check-mount-present
+              mount: "/proc"
+              context:
+                - runtime
+            - # The CHECK half of the dual-natured `kernel-param` state-provision plugin verb. It
+              # reads /proc/sys/kernel/ostype directly (equivalent to `sysctl -n kernel.ostype` but
+              # needing no procps-ng, which fedora-minimal omits). kernel.ostype is always "Linux"
+              # (deterministic), so it is the corpus-unused exercise that proves the kernel-param
+              # check verb dispatches through the provider registry at runtime, value matcher and all.
+              check: the kernel-param check verb reads kernel.ostype = Linux from /proc/sys (the kernel-param check verb is now a dedicated builtin state-provision plugin unit; corpus-unused so exercised here, baked into the check-pod image)
+              id: check-kernel-param-readable
+              kernel-param: {kernel-param: "kernel.ostype", value: "Linux"}
+              context:
+                - runtime
