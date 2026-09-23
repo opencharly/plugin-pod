@@ -7,8 +7,43 @@
 #
 # Declaring discover: is the whole fix: the candy is scanned, the CUE schema gate
 # applies, and the STOCK `charly box validate` step starts working with no workflow
-# change. This file declares no entities of its own - it only tells charly where to look.
-version: 2026.232.0520
+# change. This file now ALSO owns the `check-pod` R10 bed + its fixture box, relocated
+# here from distro-fedora: the bed's SUBJECT is the pod runtime/mechanism this plugin
+# implements, so it belongs with its owner — not with the distro whose base image the
+# fixture happens to build on.
+version: 2026.249.2125
+defaults:
+    platform:
+        - linux/amd64
+    tag: auto
+    registry: ghcr.io/opencharly
+    build:
+        - rpm
+    merge:
+        auto: false
+        max_mb: 128
 discover:
     - path: candy
       recursive: true
+    - path: box
+      recursive: true
+
+# check-pod — the canonical fast pod-runtime R10 bed. See box/check-pod/charly.yml for
+# the fixture image it deploys.
+check-pod:
+    pod:
+        image: check-pod
+        disposable: true
+        lifecycle: dev
+        description: Sole combined fast (~275s) mechanism bed proving four pipeline paths at once — kind:box build, kind:candy composition order, kind:pod runtime, and deploy-target rendering — the canonical fast R10 gate for box/candy/pod/deploy-target code changes. Builds a two-layer fedora-minimal:43 image (check-base-layer + check-stack-layer asserting the base marker survived), deploys it, and runs file marker checks, the :18794 port/ss listener check, the check-sleep supervisord service check, plus a host-side charly status --json (status-shows-pod).
+        plan:
+            - check: command=charly status --json
+              id: status-shows-pod
+              stdout:
+                - contains: '"kind": "pod"'
+                - contains: check-pod
+              context:
+                - runtime
+              command:
+                command: ${CHARLY_BIN} status --json
+                in_container: false
