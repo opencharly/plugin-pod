@@ -287,7 +287,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 	runEngine := rt.RunEngine
 	if dc, _ := loadPodDeployConfig(); dc != nil {
 		if entry, ok := dc.Lookup(boxName, instance); ok && entry.Engine != "" {
-			runEngine = entry.Engine
+			runEngine = string(entry.Engine)
 		}
 	}
 	engine := kit.EngineBinary(runEngine)
