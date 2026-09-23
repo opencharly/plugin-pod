@@ -35,7 +35,7 @@ check-pod:
         image: check-pod
         disposable: true
         lifecycle: dev
-        description: Sole combined fast (~110s) mechanism bed proving four pipeline paths at once — kind:box build, kind:candy composition order, kind:pod runtime, and deploy-target rendering — the canonical fast R10 gate for box/candy/pod/deploy-target code changes. Builds a two-layer fedora-minimal:43 image (check-base-layer + check-stack-layer asserting the base marker survived), deploys it, and runs file marker checks, the :18794 port/ss listener check, the check-sleep supervisord service check, plus a host-side charly status --json (status-shows-pod).
+        description: Sole combined fast (~275s) mechanism bed proving four pipeline paths at once — kind:box build, kind:candy composition order, kind:pod runtime, and deploy-target rendering — the canonical fast R10 gate for box/candy/pod/deploy-target code changes. Builds a two-layer fedora-minimal:43 image (check-base-layer + check-stack-layer asserting the base marker survived), deploys it, and runs file marker checks, the :18794 port/ss listener check, the check-sleep supervisord service check, plus a host-side charly status --json (status-shows-pod).
         plan:
             - check: command=charly status --json
               id: status-shows-pod

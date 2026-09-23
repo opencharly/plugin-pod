@@ -4,7 +4,7 @@ check-pod:
         produce: []
         description: |-
             Combined fast check fixture — image/layer/pod/deploy-target mechanism smoke
-            Two-layer fedora-minimal image backing the check-pod kind:check bed (`charly check run check-pod`) — covers kind:box build, kind:candy composition order, kind:pod runtime (nc :18794 + supervisord), and deploy-target rendering (supervisord sleep).
+            Two-layer fedora-minimal image backing the check-pod kind:pod bed (`charly check run check-pod`) — covers kind:box build, kind:candy composition order, kind:pod runtime (nc :18794 + supervisord), and deploy-target rendering (supervisord sleep).
         distro:
             - fedora:43
             - fedora
