@@ -322,16 +322,14 @@ func (c *VolumeListCmd) Run() error {
 	boxName := kit.ResolveBoxName(c.Box)
 	bin := kit.EngineBinary(deploykit.ResolveBoxEngineForDeploy(boxName, c.Instance, rt.RunEngine))
 	prefix := kit.ContainerNameInstance(boxName, c.Instance) + "-"
+
 	out, err := exec.Command(bin, "volume", "ls", "--format", "{{.Name}}").Output()
 	if err != nil {
 		return fmt.Errorf("listing volumes: %w", err)
 	}
-	var names []string
-	for n := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
-		if n != "" && strings.HasPrefix(n, prefix) {
-			names = append(names, n)
-		}
-	}
+	// A base deploy's prefix is a prefix of its sibling instances' volume names,
+	// so the shared ownedDeployVolumes filter excludes any live sibling's volumes.
+	names := ownedDeployVolumes(strings.Split(strings.TrimSpace(string(out)), "\n"), boxName, c.Instance)
 	if len(names) == 0 {
 		fmt.Printf("No named volumes for %s (prefix %s)\n", boxName, prefix)
 		return nil
