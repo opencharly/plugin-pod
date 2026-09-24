@@ -108,9 +108,6 @@ func ownedDeployVolumes(names []string, boxName, instance string) []string {
 	var siblings []string
 	if dc, err := loadPodDeployConfig(); err == nil {
 		siblings = deploykit.SiblingVolumePrefixes(dc, boxName, instance)
-		_ = os.WriteFile("/tmp/opencode/cut/sib-debug.txt", []byte(fmt.Sprintf("box=%q inst=%q dc_nil=%v keys=%d siblings=%v\n", boxName, instance, dc == nil, len(dc.Deploy), siblings)), 0o644)
-	} else {
-		_ = os.WriteFile("/tmp/opencode/cut/sib-debug.txt", []byte("ERR: "+err.Error()+"\n"), 0o644)
 	}
 	var out []string
 	for _, n := range names {
