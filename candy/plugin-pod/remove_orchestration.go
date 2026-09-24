@@ -95,8 +95,41 @@ func runHook(engine, containerName, hookScript string, envVars []string) error {
 	return cmd.Run()
 }
 
-// removeVolumes removes all named volumes matching the image/instance prefix (relocated from
+// ownedDeployVolumes filters engine-side named-volume names down to the ones
+// (boxName, instance) OWNS, consulting the live deploy config so a base deploy
+// never claims a sibling instance's volumes (a base prefix is a prefix of the
+// instance names, and podman's `name=` filter is a substring match). The single
+// owner of the selection step shared by removeVolumes and VolumeListCmd (R3);
+// pure apart from the config read, so it is unit-testable with the
+// loadPodDeployConfig var seam. When the config is unreadable (the orphaned-
+// deploy case) no siblings are known and the deploy's own prefix is the only
+// signal, matching the pre-existing best-effort contract.
+func ownedDeployVolumes(names []string, boxName, instance string) []string {
+	var siblings []string
+	if dc, err := loadPodDeployConfig(); err == nil {
+		siblings = deploykit.SiblingVolumePrefixes(dc, boxName, instance)
+		_ = os.WriteFile("/tmp/opencode/cut/sib-debug.txt", []byte(fmt.Sprintf("box=%q inst=%q dc_nil=%v keys=%d siblings=%v\n", boxName, instance, dc == nil, len(dc.Deploy), siblings)), 0o644)
+	} else {
+		_ = os.WriteFile("/tmp/opencode/cut/sib-debug.txt", []byte("ERR: "+err.Error()+"\n"), 0o644)
+	}
+	var out []string
+	for _, n := range names {
+		if n != "" && deploykit.VolumeNameBelongsTo(n, boxName, instance, siblings) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// removeVolumes removes the named volumes OWNED by this deploy (relocated from
 // charly/hooks.go — zero core-registry coupling, its only caller was podRemoveCmd).
+//
+// The podman `name=` filter is a SUBSTRING match, and a base deploy's prefix
+// (charly-<base>-) is a prefix of every sibling instance's volume name
+// (charly-<base>-<instance>-<vol>). Filtering by prefix alone therefore made
+// `charly remove --purge <base>` delete a live instance's volumes too — the
+// sibling-safe ownedDeployVolumes filter confines the purge to this deploy's own
+// volumes.
 func removeVolumes(engine, boxName, instance string) {
 	prefix := deploykit.DeployVolumePrefix(boxName, instance)
 
@@ -105,10 +138,7 @@ func removeVolumes(engine, boxName, instance string) {
 		fmt.Fprintf(os.Stderr, "Warning: listing volumes: %v\n", err)
 		return
 	}
-	for name := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
-		if name == "" {
-			continue
-		}
+	for _, name := range ownedDeployVolumes(strings.Split(strings.TrimSpace(string(out)), "\n"), boxName, instance) {
 		rm := exec.Command(engine, "volume", "rm", name)
 		rm.Stderr = os.Stderr
 		if err := rm.Run(); err != nil {
@@ -171,7 +201,12 @@ func ensureContainersRemoved(engine string, names []string) {
 
 func purgeDeployArtifacts(engine, boxName, instance string) {
 	removeVolumes(engine, boxName, instance)
-	deploykit.RemoveEncryptedVolumes(boxName, instance)
+	// Pass the executor-loaded config explicitly: the bare deploykit.LoadDeployConfig
+	// is a documented silent no-op out-of-process (plugin-pod IS out-of-process),
+	// so RemoveEncryptedVolumes alone would see no siblings and over-match. Same
+	// seam discipline as removeVolumes/resolveSidecarNames (R3).
+	dc, _ := loadPodDeployConfig()
+	deploykit.RemoveEncryptedVolumesWithConfig(boxName, instance, dc)
 	dropOverlayImagesByRef(engine, spec.DeployKey(boxName, instance)+"-overlay")
 }
 
