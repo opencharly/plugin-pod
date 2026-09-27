@@ -22,12 +22,16 @@ package pod
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 
 	"github.com/opencharly/sdk"
 	pb "github.com/opencharly/spec/proto"
 )
+
+//go:embed schema/*.cue
+var schemaFS embed.FS
 
 // calver is the candy's identity CalVer (advertised over Describe).
 const calver = "2026.201.0000"
@@ -43,17 +47,18 @@ var podCommandWords = []string{"start", "stop", "restart", "logs", "remove", "sh
 // out-of-proc serving.
 func NewProvider() pb.ProviderServer { return &provider{} }
 
-// NewMeta advertises command:start/stop/restart/config/shell/service/logs/remove/cp/volume via
+// NewMeta advertises command:start/stop/restart/logs/remove/shell/service/volume/cp/config/update via
 // sdk.NewMeta → BuildCapabilities so the COMPILED-IN path registers each as a command provider (the
 // host builds its dynamic Kong grammar + dispatches Invoke(OpRun)). A command's args are
-// pass-through CLI tokens, not a structured plugin_input, so the capabilities carry no InputDef and
-// the plugin ships no schema.
+// pass-through CLI tokens, not a structured plugin_input, so the capabilities carry no InputDef —
+// but there is NO schema-less plugin: this plugin ships its OWN self-contained CUE schema
+// (schema/pod.cue, embedded via schemaFS) documenting its command surface, served over Describe.
 func NewMeta() pb.PluginMetaServer {
 	caps := make([]sdk.ProvidedCapability, 0, len(podCommandWords))
 	for _, w := range podCommandWords {
 		caps = append(caps, sdk.ProvidedCapability{Class: "command", Word: w})
 	}
-	return sdk.NewMeta(calver, caps, nil)
+	return sdk.NewMeta(calver, caps, schemaFS)
 }
 
 // CliMain is the OUT-OF-PROCESS command entry — unreachable in the canonical compiled-in placement.
