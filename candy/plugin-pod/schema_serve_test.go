@@ -2,15 +2,47 @@ package pod
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
+	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 
 	pb "github.com/opencharly/spec/proto"
 	sdkschema "github.com/opencharly/spec/schema"
 	"github.com/opencharly/spec/schemaconcat"
 )
+
+// TestSchemaCommandsMatchGoSource pins the served schema's `#PodPlugin.commands`
+// to the Go source of truth (`podCommandWords`), so the doc schema cannot drift
+// from the declared capability surface (R3 — one source, not two hand-maintained
+// copies).
+func TestSchemaCommandsMatchGoSource(t *testing.T) {
+	caps, err := NewMeta().Describe(context.Background(), &pb.Empty{})
+	if err != nil {
+		t.Fatalf("Describe: %v", err)
+	}
+	v := cuecontext.New().CompileString(caps.GetSchemaCue())
+	if err := v.Err(); err != nil {
+		t.Fatalf("served schema does not compile: %v", err)
+	}
+	it, err := v.LookupPath(cue.ParsePath("#PodPlugin.commands")).List()
+	if err != nil {
+		t.Fatalf("#PodPlugin.commands: %v", err)
+	}
+	var got []string
+	for it.Next() {
+		s, err := it.Value().String()
+		if err != nil {
+			t.Fatalf("commands entry: %v", err)
+		}
+		got = append(got, s)
+	}
+	if !reflect.DeepEqual(got, podCommandWords) {
+		t.Errorf("schema #PodPlugin.commands = %v, want the Go source podCommandWords = %v", got, podCommandWords)
+	}
+}
 
 // TestNewMetaServesNonEmptySchema pins the uniform plugin contract: NewMeta's
 // Describe reply MUST carry this plugin's own non-empty CUE schema (schema_cue).
