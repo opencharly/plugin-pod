@@ -47,7 +47,7 @@ var podCommandWords = []string{"start", "stop", "restart", "logs", "remove", "sh
 // out-of-proc serving.
 func NewProvider() pb.ProviderServer { return &provider{} }
 
-// NewMeta advertises command:start/stop/restart/config/shell/service/logs/remove/cp/volume via
+// NewMeta advertises command:start/stop/restart/logs/remove/shell/service/volume/cp/config/update via
 // sdk.NewMeta → BuildCapabilities so the COMPILED-IN path registers each as a command provider (the
 // host builds its dynamic Kong grammar + dispatches Invoke(OpRun)). A command's args are
 // pass-through CLI tokens, not a structured plugin_input, so the capabilities carry no InputDef —
