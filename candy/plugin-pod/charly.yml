@@ -1,7 +1,5 @@
-version: 2026.232.0520
 plugin-pod:
     candy:
-        version: 2026.201.0000
         description: |-
             The `charly start`/`stop`/`restart`/`config`/`shell`/`service`/`logs`/`remove`/`cp`/
             `volume` pod-lifecycle CLI — a COMMAND-class charly plugin (github.com/opencharly/sdk),
@@ -36,7 +34,6 @@ plugin-pod:
               context:
                 - build
               command: "test -f go.mod && test -f plugin.go && test -f command.go && test -f pod_cmd.go"
-
 restart-skill:
     skill:
         name: restart
@@ -75,7 +72,6 @@ restart-skill:
             - `/charly-core:charly-update` — update the image, then restart.
             - `/charly-core:service` — restart ONE service inside a multi-service deployment.
             - `/charly-core:start` / `/charly-core:stop` — lifecycle.
-
 volume-skill:
     skill:
         name: volume
@@ -113,7 +109,6 @@ volume-skill:
 
             - `/charly-core:stop` / `/charly-core:start` — stop before a reset, start to recreate.
             - `/charly-automation:enc` — encrypted-volume semantics.
-
 cp-skill:
     skill:
         name: cp

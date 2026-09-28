@@ -17,7 +17,7 @@ check-pod:
             # in charly.yml compiled_plugins, so registerCompiledPlugin registered it
             # in-process and the loader's coexist switch skips the out-of-process host
             # build). The SAME candy serves out-of-process when NOT compiled in.
-            - '@github.com/opencharly/plugin-example-external/candy/plugin-example-external:v2026.237.1420'
+            - '@github.com/opencharly/plugin-example-external/candy/plugin-example-external:v2026.242.0556'
             # BUILD-TIME plugin execution (operator-authorized). plugin-example-step
             # provides verb:examplestep; examplestep-consumer's BUILD-context
             # `plugin: examplestep` run-step drives the build-path plugin-connect +
@@ -26,14 +26,14 @@ check-pod:
             # existing @github plugin-example-external + check-stack-layer
             # build-time-act (unix_group groupadd) cross-repo pattern; the
             # examplestep-build-baked check below proves it executed.
-            - '@github.com/opencharly/plugin-example-step/candy/plugin-example-step:v2026.237.1421'
+            - '@github.com/opencharly/plugin-example-step/candy/plugin-example-step:v2026.242.0529'
             - '@github.com/opencharly/layer-examplestep-consumer:v2026.241.1216'
             # BUILD-TIME BUILDER plugin execution. plugin-example-builder provides
             # builder:examplebuilder; examplebuilder-consumer's `external_builder:
             # examplebuilder` drives emitExternalBuilderStages, so at image build the
             # builder's OpResolve emits a FROM…AS stage that COPYs /opt/examplebuilder-artifact
             # into the image. The examplebuilder-build-baked check below proves it executed.
-            - '@github.com/opencharly/plugin-example-builder/candy/plugin-example-builder:v2026.237.1420'
+            - '@github.com/opencharly/plugin-example-builder/candy/plugin-example-builder:v2026.242.0528'
             - '@github.com/opencharly/layer-examplebuilder-consumer:v2026.239.1621'
         plan:
             - check: the examplebuilder external builder plugin EXECUTED at image build — its OpResolve emitted a multi-stage builder that COPYd /opt/examplebuilder-artifact into the check-pod image (proves the build-time external-BUILDER seam emitExternalBuilderStages + Invoke(OpResolve))
