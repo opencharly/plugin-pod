@@ -1,7 +1,5 @@
-version: 2026.232.0520
 plugin-pod:
     candy:
-        version: 2026.201.0000
         description: |-
             The `charly start`/`stop`/`restart`/`config`/`shell`/`service`/`logs`/`remove`/`cp`/
             `volume` pod-lifecycle CLI — a COMMAND-class charly plugin (github.com/opencharly/sdk),
