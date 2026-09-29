@@ -296,7 +296,7 @@ func podMarshalNode() func(name string, node *deploykit.DeployNode) (*yaml.Node,
 // loader-threaded Primaries (podMarshalNode). Best-effort (deploykit.CleanDeployEntry swallows its
 // own errors with stderr warnings) — matching the former host leg.
 func cleanDeployEntry(boxName, instance string) error {
-	deploykit.CleanDeployEntry(boxName, instance, podMarshalNode(), loadPodDeployConfig)
+	deploykit.CleanDeployEntry(boxName, instance, podMarshalNode(), loadPodDeployConfig, cmdCtx)
 	return nil
 }
 
