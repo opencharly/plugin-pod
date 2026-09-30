@@ -133,7 +133,7 @@ func (c *RestartCmd) Run() error {
 	if spec.IsRemoteImageRef(ref) {
 		boxName = spec.ParseRemoteRef(ref).Name
 	}
-	return deploykit.RestartPodService(boxName, c.Instance)
+	return deploykit.RestartPodService(cmdCtx, boxName, c.Instance)
 }
 
 // LogsCmd shows service container logs — the `charly logs` grammar. Registry-bound
@@ -247,7 +247,7 @@ type ServiceStatusCmd struct {
 }
 
 func (c *ServiceStatusCmd) Run() error {
-	argv, err := buildServiceArgv(c.Box, c.Instance, "status", "")
+	argv, err := buildServiceArgv(cmdCtx, c.Box, c.Instance, "status", "")
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ type ServiceStartCmd struct {
 }
 
 func (c *ServiceStartCmd) Run() error {
-	argv, err := buildServiceArgv(c.Box, c.Instance, "start", c.Service)
+	argv, err := buildServiceArgv(cmdCtx, c.Box, c.Instance, "start", c.Service)
 	if err != nil {
 		return err
 	}
@@ -277,7 +277,7 @@ type ServiceStopCmd struct {
 }
 
 func (c *ServiceStopCmd) Run() error {
-	argv, err := buildServiceArgv(c.Box, c.Instance, "stop", c.Service)
+	argv, err := buildServiceArgv(cmdCtx, c.Box, c.Instance, "stop", c.Service)
 	if err != nil {
 		return err
 	}
@@ -292,7 +292,7 @@ type ServiceRestartCmd struct {
 }
 
 func (c *ServiceRestartCmd) Run() error {
-	argv, err := buildServiceArgv(c.Box, c.Instance, "restart", c.Service)
+	argv, err := buildServiceArgv(cmdCtx, c.Box, c.Instance, "restart", c.Service)
 	if err != nil {
 		return err
 	}
@@ -320,7 +320,7 @@ func (c *VolumeListCmd) Run() error {
 		return err
 	}
 	boxName := kit.ResolveBoxName(c.Box)
-	bin := kit.EngineBinary(deploykit.ResolveBoxEngineForDeploy(boxName, c.Instance, rt.RunEngine))
+	bin := kit.EngineBinary(deploykit.ResolveBoxEngineForDeploy(cmdCtx, boxName, c.Instance, rt.RunEngine))
 	prefix := kit.ContainerNameInstance(boxName, c.Instance) + "-"
 
 	out, err := exec.Command(bin, "volume", "ls", "--format", "{{.Name}}").Output()
@@ -363,7 +363,7 @@ func (c *VolumeResetCmd) Run() error {
 		return err
 	}
 	boxName := kit.ResolveBoxName(c.Box)
-	bin := kit.EngineBinary(deploykit.ResolveBoxEngineForDeploy(boxName, c.Instance, rt.RunEngine))
+	bin := kit.EngineBinary(deploykit.ResolveBoxEngineForDeploy(cmdCtx, boxName, c.Instance, rt.RunEngine))
 	full := c.Name
 	if !strings.HasPrefix(full, "charly-") {
 		full = kit.ContainerNameInstance(boxName, c.Instance) + "-" + c.Name
@@ -662,9 +662,9 @@ func (c *CpCmd) Run() error {
 	var engine, name string
 	var err error
 	if c.Sidecar != "" {
-		engine, name, err = deploykit.ResolveSidecarContainer(c.Box, c.Instance, c.Sidecar)
+		engine, name, err = deploykit.ResolveSidecarContainer(cmdCtx, c.Box, c.Instance, c.Sidecar)
 	} else {
-		engine, name, err = deploykit.ResolveContainer(c.Box, c.Instance)
+		engine, name, err = deploykit.ResolveContainer(cmdCtx, c.Box, c.Instance)
 	}
 	if err != nil {
 		return err
