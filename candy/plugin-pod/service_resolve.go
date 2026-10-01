@@ -1,6 +1,7 @@
 package pod
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -56,13 +57,13 @@ func initRenderManagementCommand(def *spec.ResolvedInit, operation, serviceName 
 }
 
 // resolveServiceInit resolves the container, engine, and init system for service management.
-func resolveServiceInit(box, instance string) (engine, containerName string, initDef *spec.ResolvedInit, err error) {
+func resolveServiceInit(ctx context.Context, box, instance string) (engine, containerName string, initDef *spec.ResolvedInit, err error) {
 	rt, err := kit.ResolveRuntime()
 	if err != nil {
 		return "", "", nil, err
 	}
 	boxName := kit.ResolveBoxName(box)
-	runEngine := deploykit.ResolveBoxEngineForDeploy(boxName, instance, rt.RunEngine)
+	runEngine := deploykit.ResolveBoxEngineForDeploy(ctx, boxName, instance, rt.RunEngine)
 	engine = kit.EngineBinary(runEngine)
 	containerName = kit.ContainerNameInstance(boxName, instance)
 	if !kit.ContainerRunning(engine, containerName) {
@@ -113,8 +114,8 @@ func validateServiceName(engine, containerName, serviceName string) error {
 // buildServiceArgv resolves + validates, then renders the FINAL `<engine> exec <container> <tool>
 // <op> [svc]` argv the host will run over LifecycleTarget.Shell — the plugin-side twin of the
 // former core execInitCommand, minus the dispatch step itself.
-func buildServiceArgv(box, instance, operation, service string) ([]string, error) {
-	engine, containerName, initDef, err := resolveServiceInit(box, instance)
+func buildServiceArgv(ctx context.Context, box, instance, operation, service string) ([]string, error) {
+	engine, containerName, initDef, err := resolveServiceInit(ctx, box, instance)
 	if err != nil {
 		return nil, err
 	}

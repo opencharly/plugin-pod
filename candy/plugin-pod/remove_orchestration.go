@@ -1,6 +1,7 @@
 package pod
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -295,8 +296,8 @@ func podMarshalNode() func(name string, node *deploykit.DeployNode) (*yaml.Node,
 // loaderkit.LoadHostDeployConfigViaExecutor read (loadPodDeployConfig); the marshal resugars via
 // loader-threaded Primaries (podMarshalNode). Best-effort (deploykit.CleanDeployEntry swallows its
 // own errors with stderr warnings) — matching the former host leg.
-func cleanDeployEntry(boxName, instance string) error {
-	deploykit.CleanDeployEntry(boxName, instance, podMarshalNode(), loadPodDeployConfig)
+func cleanDeployEntry(ctx context.Context, boxName, instance string) error {
+	deploykit.CleanDeployEntry(boxName, instance, podMarshalNode(), loadPodDeployConfig, ctx)
 	return nil
 }
 
@@ -444,7 +445,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 			purgeDeployArtifacts(engine, boxName, instance)
 		}
 		if !keepDeploy {
-			if err := cleanDeployEntry(boxName, instance); err != nil {
+			if err := cleanDeployEntry(cmdCtx, boxName, instance); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: cleaning deploy entry: %v\n", err)
 			}
 		}
@@ -466,7 +467,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		purgeDeployArtifacts(engine, boxName, instance)
 	}
 	if !keepDeploy {
-		if err := cleanDeployEntry(boxName, instance); err != nil {
+		if err := cleanDeployEntry(cmdCtx, boxName, instance); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: cleaning deploy entry: %v\n", err)
 		}
 	}
