@@ -449,15 +449,20 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		// Remove sidecar config files. Naming convention is `<podBase>-<sidecar>-<purpose>.<ext>`
 		// (e.g. charly-foo-tailscale-serve.json). The prefix is anchored to the sidecar NAME so
 		// unrelated sidecars/bases can't match.
-		if scDir, scErr := kit.SidecarConfigDir(); scErr == nil {
-			if entries, err := os.ReadDir(scDir); err == nil {
-				for _, sc := range sidecarNames {
-					scfPrefix := podBase + "-" + sc + "-"
-					for _, entry := range entries {
-						if strings.HasPrefix(entry.Name(), scfPrefix) {
-							scfPath := filepath.Join(scDir, entry.Name())
-							if err := os.Remove(scfPath); err == nil {
-								fmt.Fprintf(os.Stderr, "Removed %s\n", scfPath)
+		// --keep-deploy keeps the sidecar CONFIG files too: they are part of the deployment whose
+		// entry and units we just preserved. Deleting them leaves the same half-kept deploy the unit
+		// guard exists to prevent, one layer further down (plugin-pod#18).
+		if !keepDeploy {
+			if scDir, scErr := kit.SidecarConfigDir(); scErr == nil {
+				if entries, err := os.ReadDir(scDir); err == nil {
+					for _, sc := range sidecarNames {
+						scfPrefix := podBase + "-" + sc + "-"
+						for _, entry := range entries {
+							if strings.HasPrefix(entry.Name(), scfPrefix) {
+								scfPath := filepath.Join(scDir, entry.Name())
+								if err := os.Remove(scfPath); err == nil {
+									fmt.Fprintf(os.Stderr, "Removed %s\n", scfPath)
+								}
 							}
 						}
 					}
