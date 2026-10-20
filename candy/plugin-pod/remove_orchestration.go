@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -301,6 +302,110 @@ func cleanDeployEntry(ctx context.Context, boxName, instance string) error {
 	return nil
 }
 
+// cleanDeployEntryAndReport is the whole post-removal deploy-entry step, with the cleaner injected so
+// the two outcomes are testable: a successful clean reports what went with the entry, and a failed one
+// reports the error instead — never the note, which would claim a removal that did not happen.
+func cleanDeployEntryAndReport(ctx context.Context, boxName, instance string,
+	clean func(context.Context, string, string) error, w io.Writer) {
+	if err := clean(ctx, boxName, instance); err != nil {
+		fmt.Fprintf(w, "Warning: cleaning deploy entry: %v\n", err)
+		return
+	}
+	fmt.Fprintln(w, deployEntryDiscardNote(boxName, instance))
+}
+
+// deployEntryDiscardNote is the message printed when `remove` deletes the deploy entry. Without this
+// line the removal is silent, and that entry is where the deployment's CONFIGURATION lives — the image
+// tag, the published host port (resolved_port), the device set and the env. Losing the port that way is
+// what made a remove+re-add come back on a random port (charly#989), so the operator is told what goes
+// and how to keep it.
+func deployEntryDiscardNote(boxName, instance string) string {
+	label := boxName
+	if instance != "" {
+		label = boxName + "/" + instance
+	}
+	return fmt.Sprintf("[charly] the deploy entry for %s is gone: its configuration goes with it "+
+		"(if there was one — this line prints whether or not it existed) "+
+		"(image tag, published port, devices, env). Re-create it with `charly config`, or pass "+
+		"--keep-deploy to keep the entry and only drop the instance.", label)
+}
+
+// deployUnitPaths is the set of unit files a deployment owns: its quadlet, its pod unit (sidecar mode),
+// and one .container per sidecar. Built here rather than inline so a test can assert the SET, not just
+// what a caller happens to pass on — dropping the sidecar loop would otherwise be invisible.
+func deployUnitPaths(qdir, boxName, instance, podBase string, sidecarNames []string) []string {
+	paths := []string{
+		filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance)),
+		filepath.Join(qdir, kit.PodQuadletFilenameInstance(boxName, instance)),
+	}
+	for _, sc := range sidecarNames {
+		paths = append(paths, filepath.Join(qdir, podBase+"-"+sc+".container"))
+	}
+	return paths
+}
+
+// removeSidecarConfigs deletes the sidecar config files belonging to this deploy — unless the caller
+// asked to KEEP the deploy, in which case none are touched. They are part of the deployment whose entry
+// and units `--keep-deploy` preserves; deleting them leaves the same half-kept deploy the unit guard
+// exists to prevent, one layer out (plugin-pod#18). Kept as a function so the decision is testable
+// against real files rather than only by reading the call site.
+func removeSidecarConfigs(keepDeploy bool, scDir, podBase string, sidecarNames []string, w io.Writer) error {
+	if keepDeploy {
+		return nil
+	}
+	entries, err := os.ReadDir(scDir)
+	if err != nil {
+		return nil // no sidecar config dir is a deployment without sidecar configs
+	}
+	for _, sc := range sidecarNames {
+		scfPrefix := podBase + "-" + sc + "-"
+		for _, entry := range entries {
+			if !strings.HasPrefix(entry.Name(), scfPrefix) {
+				continue
+			}
+			scfPath := filepath.Join(scDir, entry.Name())
+			if err := os.Remove(scfPath); err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return fmt.Errorf("removing sidecar config %s: %w", scfPath, err)
+			}
+			fmt.Fprintf(w, "Removed %s\n", scfPath)
+		}
+	}
+	return nil
+}
+
+// removeUnitFiles deletes the deployment's unit files — unless the caller asked to KEEP the deploy, in
+// which case none are touched. The units (quadlet, pod, and every sidecar .container) are part of the
+// deployment whose entry `--keep-deploy` preserves; deleting any of them leaves a half-kept deploy that
+// `charly start` cannot resume, which is exactly the failure plugin-pod#18 is about. Kept as its own
+// function so the decision is testable against real files instead of only by reading the call site.
+func removeUnitFiles(keepDeploy bool, paths []string, w io.Writer) error {
+	if keepDeploy {
+		// Report only what is actually there: announcing "Kept <path>" for a unit that does not exist
+		// is the mirror of announcing a removal that never happened — the exact defect this file just
+		// stopped doing on the discard path.
+		for _, p := range paths {
+			if _, err := os.Stat(p); err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "Kept %s (--keep-deploy)\n", p)
+		}
+		return nil
+	}
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("removing %s: %w", p, err)
+		}
+		fmt.Fprintf(w, "Removed %s\n", p)
+	}
+	return nil
+}
+
 // runPodRemove is the full `charly remove` orchestration, ported verbatim from the former
 // charly/commands.go podRemoveCmd.Run() (minus tunnel-stop, already handled by the caller, and
 // minus the arbiter-release bracket, which the caller defers to the host seam).
@@ -367,43 +472,24 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 			return err
 		}
 
-		qpath := filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance))
-		if err := os.Remove(qpath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("removing quadlet file: %w", err)
-		}
-		fmt.Fprintf(os.Stderr, "Removed %s\n", qpath)
-
-		// Remove pod file if it exists (sidecar mode)
-		podPath := filepath.Join(qdir, kit.PodQuadletFilenameInstance(boxName, instance))
-		if err := os.Remove(podPath); err == nil {
-			fmt.Fprintf(os.Stderr, "Removed %s\n", podPath)
-		}
-
-		// Remove sidecar .container files (exact-name match, no prefix glob). Sources sidecar
-		// names from charly.yml — see resolveSidecarNames for why charly.yml is authoritative.
-		for _, sc := range sidecarNames {
-			scPath := filepath.Join(qdir, podBase+"-"+sc+".container")
-			if err := os.Remove(scPath); err == nil {
-				fmt.Fprintf(os.Stderr, "Removed %s\n", scPath)
-			}
+		// With --keep-deploy the deploy entry AND its unit stay put, so `charly start` can bring the
+		// same deployment back on the SAME published port. Removing the unit while keeping the entry
+		// was the worst of both: `start` then fails with "resolve plan: not configured" and the only
+		// recovery is `charly config`, which allocates a NEW random port (plugin-pod#18).
+		unitPaths := deployUnitPaths(qdir, boxName, instance, podBase, sidecarNames)
+		if err := removeUnitFiles(keepDeploy, unitPaths, os.Stderr); err != nil {
+			return err
 		}
 
 		// Remove sidecar config files. Naming convention is `<podBase>-<sidecar>-<purpose>.<ext>`
 		// (e.g. charly-foo-tailscale-serve.json). The prefix is anchored to the sidecar NAME so
 		// unrelated sidecars/bases can't match.
+		// --keep-deploy keeps the sidecar CONFIG files too: they are part of the deployment whose
+		// entry and units we just preserved. Deleting them leaves the same half-kept deploy the unit
+		// guard exists to prevent, one layer further down (plugin-pod#18).
 		if scDir, scErr := kit.SidecarConfigDir(); scErr == nil {
-			if entries, err := os.ReadDir(scDir); err == nil {
-				for _, sc := range sidecarNames {
-					scfPrefix := podBase + "-" + sc + "-"
-					for _, entry := range entries {
-						if strings.HasPrefix(entry.Name(), scfPrefix) {
-							scfPath := filepath.Join(scDir, entry.Name())
-							if err := os.Remove(scfPath); err == nil {
-								fmt.Fprintf(os.Stderr, "Removed %s\n", scfPath)
-							}
-						}
-					}
-				}
+			if err := removeSidecarConfigs(keepDeploy, scDir, podBase, sidecarNames, os.Stderr); err != nil {
+				return err
 			}
 		}
 
@@ -445,9 +531,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 			purgeDeployArtifacts(engine, boxName, instance)
 		}
 		if !keepDeploy {
-			if err := cleanDeployEntry(cmdCtx, boxName, instance); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: cleaning deploy entry: %v\n", err)
-			}
+			cleanDeployEntryAndReport(cmdCtx, boxName, instance, cleanDeployEntry, os.Stderr)
 		}
 		return nil
 	}
@@ -467,9 +551,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		purgeDeployArtifacts(engine, boxName, instance)
 	}
 	if !keepDeploy {
-		if err := cleanDeployEntry(cmdCtx, boxName, instance); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: cleaning deploy entry: %v\n", err)
-		}
+		cleanDeployEntryAndReport(cmdCtx, boxName, instance, cleanDeployEntry, os.Stderr)
 	}
 	return nil
 }
