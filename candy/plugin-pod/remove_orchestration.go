@@ -330,6 +330,20 @@ func deployEntryDiscardNote(boxName, instance string) string {
 		"--keep-deploy to keep the entry and only drop the instance.", label)
 }
 
+// deployUnitPaths is the set of unit files a deployment owns: its quadlet, its pod unit (sidecar mode),
+// and one .container per sidecar. Built here rather than inline so a test can assert the SET, not just
+// what a caller happens to pass on — dropping the sidecar loop would otherwise be invisible.
+func deployUnitPaths(qdir, boxName, instance, podBase string, sidecarNames []string) []string {
+	paths := []string{
+		filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance)),
+		filepath.Join(qdir, kit.PodQuadletFilenameInstance(boxName, instance)),
+	}
+	for _, sc := range sidecarNames {
+		paths = append(paths, filepath.Join(qdir, podBase+"-"+sc+".container"))
+	}
+	return paths
+}
+
 // removeUnitFiles deletes the deployment's unit files — unless the caller asked to KEEP the deploy, in
 // which case none are touched. The units (quadlet, pod, and every sidecar .container) are part of the
 // deployment whose entry `--keep-deploy` preserves; deleting any of them leaves a half-kept deploy that
@@ -424,13 +438,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		// same deployment back on the SAME published port. Removing the unit while keeping the entry
 		// was the worst of both: `start` then fails with "resolve plan: not configured" and the only
 		// recovery is `charly config`, which allocates a NEW random port (plugin-pod#18).
-		unitPaths := []string{
-			filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance)),
-			filepath.Join(qdir, kit.PodQuadletFilenameInstance(boxName, instance)),
-		}
-		for _, sc := range sidecarNames {
-			unitPaths = append(unitPaths, filepath.Join(qdir, podBase+"-"+sc+".container"))
-		}
+		unitPaths := deployUnitPaths(qdir, boxName, instance, podBase, sidecarNames)
 		if err := removeUnitFiles(keepDeploy, unitPaths, os.Stderr); err != nil {
 			return err
 		}

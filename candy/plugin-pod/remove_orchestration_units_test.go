@@ -29,9 +29,9 @@ func unitFixture(t *testing.T, names ...string) (string, []string) {
 // unit list ever stops including the sidecars.
 func TestRemoveUnitFiles_KeepDeployKeepsEveryUnit(t *testing.T) {
 	_, paths := unitFixture(t,
-		"charly-strata-sc117.container",     // quadlet
-		"charly-strata-sc117-pod.container", // pod unit
-		"charly-strata-sc117-ts.container",  // sidecar
+		"charly-strata-sc117.container",    // quadlet
+		"charly-strata-sc117.pod",          // pod unit
+		"charly-strata-sc117-ts.container", // sidecar
 	)
 	var out bytes.Buffer
 	if err := removeUnitFiles(true, paths, &out); err != nil {
@@ -51,7 +51,7 @@ func TestRemoveUnitFiles_KeepDeployKeepsEveryUnit(t *testing.T) {
 func TestRemoveUnitFiles_DefaultRemovesEveryUnit(t *testing.T) {
 	_, paths := unitFixture(t,
 		"charly-strata-sc117.container",
-		"charly-strata-sc117-pod.container",
+		"charly-strata-sc117.pod",
 		"charly-strata-sc117-ts.container",
 	)
 	var out bytes.Buffer
@@ -74,5 +74,33 @@ func TestRemoveUnitFiles_MissingUnitIsNotAnError(t *testing.T) {
 	var out bytes.Buffer
 	if err := removeUnitFiles(false, []string{filepath.Join(dir, "absent.container")}, &out); err != nil {
 		t.Errorf("a missing unit must be tolerated, got: %v", err)
+	}
+}
+
+// TestDeployUnitPaths_IncludesQuadletPodAndEverySidecar — the SET is the contract. Driving
+// removeUnitFiles with a caller-supplied list cannot catch a dropped sidecar loop; this can.
+func TestDeployUnitPaths_IncludesQuadletPodAndEverySidecar(t *testing.T) {
+	got := deployUnitPaths("/q", "strata", "sc117", "charly-strata-sc117", []string{"ts", "net"})
+
+	want := []string{
+		"/q/charly-strata-sc117.container",
+		"/q/charly-strata-sc117.pod",
+		"/q/charly-strata-sc117-ts.container",
+		"/q/charly-strata-sc117-net.container",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("deployUnitPaths returned %d paths, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("path %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestDeployUnitPaths_NoSidecarsYieldsTwo — a sidecar-less deploy owns exactly the two units.
+func TestDeployUnitPaths_NoSidecarsYieldsTwo(t *testing.T) {
+	if got := deployUnitPaths("/q", "strata", "sc117", "charly-strata-sc117", nil); len(got) != 2 {
+		t.Errorf("a sidecar-less deploy must yield 2 paths, got %d: %v", len(got), got)
 	}
 }
