@@ -16,13 +16,18 @@ import (
 func TestDeployEntryDiscardNote_NamesWhatIsLostAndHowToKeepIt(t *testing.T) {
 	got := deployEntryDiscardNote("strata", "sc117")
 
+	// Each entry is a fact the operator must be able to read out of the note: which deployment,
+	// the published port (the thing that actually bit, #989), the rest of what lives in the entry,
+	// the flag that keeps it, how to recreate it, and the honesty hedge (a nil clean does not prove
+	// an entry existed).
 	for _, want := range []string{
-		"strata/sc117",   // which deployment
-		"published port", // the thing that actually bit (#989)
-		"devices", "env", // the rest of what lives in the entry
-		"--keep-deploy",             // how to keep it instead
-		"charly config",             // how to recreate it
-		"whether or not it existed", // honest: a nil clean does not prove an entry was there
+		"strata/sc117",
+		"published port",
+		"devices",
+		"env",
+		"--keep-deploy",
+		"charly config",
+		"whether or not it existed",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the note must mention %q; got: %s", want, got)
