@@ -153,3 +153,28 @@ func TestRemoveSidecarConfigs_DefaultRemovesOnlyThisDeploysFiles(t *testing.T) {
 		t.Errorf("the default path must report the removal; got: %q", got)
 	}
 }
+
+// TestRemoveSidecarConfigs_FailsOnARealRemovalError — the body claims a non-IsNotExist removal error
+// fails the command instead of being swallowed. That claim is only true if this returns one, so the
+// unreadable-directory case is pinned: a config file that cannot be removed must surface, not vanish.
+func TestRemoveSidecarConfigs_FailsOnARealRemovalError(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "charly-strata-sc117-ts-serve.json")
+	if err := os.WriteFile(p, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	// A read-only directory makes os.Remove fail with EACCES while still letting ReadDir work.
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	defer os.Chmod(dir, 0o700) //nolint:errcheck // best-effort cleanup
+
+	var out bytes.Buffer
+	err := removeSidecarConfigs(false, dir, "charly-strata-sc117", []string{"ts"}, &out)
+	if err == nil {
+		t.Fatal("a removal that cannot happen must return an error, not be swallowed")
+	}
+	if !strings.Contains(err.Error(), "removing sidecar config") {
+		t.Errorf("the error must name what failed; got: %v", err)
+	}
+}

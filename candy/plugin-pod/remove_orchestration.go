@@ -349,25 +349,31 @@ func deployUnitPaths(qdir, boxName, instance, podBase string, sidecarNames []str
 // and units `--keep-deploy` preserves; deleting them leaves the same half-kept deploy the unit guard
 // exists to prevent, one layer out (plugin-pod#18). Kept as a function so the decision is testable
 // against real files rather than only by reading the call site.
-func removeSidecarConfigs(keepDeploy bool, scDir, podBase string, sidecarNames []string, w io.Writer) {
+func removeSidecarConfigs(keepDeploy bool, scDir, podBase string, sidecarNames []string, w io.Writer) error {
 	if keepDeploy {
-		return
+		return nil
 	}
 	entries, err := os.ReadDir(scDir)
 	if err != nil {
-		return
+		return nil // no sidecar config dir is a deployment without sidecar configs
 	}
 	for _, sc := range sidecarNames {
 		scfPrefix := podBase + "-" + sc + "-"
 		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), scfPrefix) {
-				scfPath := filepath.Join(scDir, entry.Name())
-				if err := os.Remove(scfPath); err == nil {
-					fmt.Fprintf(w, "Removed %s\n", scfPath)
-				}
+			if !strings.HasPrefix(entry.Name(), scfPrefix) {
+				continue
 			}
+			scfPath := filepath.Join(scDir, entry.Name())
+			if err := os.Remove(scfPath); err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return fmt.Errorf("removing sidecar config %s: %w", scfPath, err)
+			}
+			fmt.Fprintf(w, "Removed %s\n", scfPath)
 		}
 	}
+	return nil
 }
 
 // removeUnitFiles deletes the deployment's unit files — unless the caller asked to KEEP the deploy, in
@@ -476,7 +482,9 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		// entry and units we just preserved. Deleting them leaves the same half-kept deploy the unit
 		// guard exists to prevent, one layer further down (plugin-pod#18).
 		if scDir, scErr := kit.SidecarConfigDir(); scErr == nil {
-			removeSidecarConfigs(keepDeploy, scDir, podBase, sidecarNames, os.Stderr)
+			if err := removeSidecarConfigs(keepDeploy, scDir, podBase, sidecarNames, os.Stderr); err != nil {
+				return err
+			}
 		}
 
 		// Stop companion services before removing (best-effort)
