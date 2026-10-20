@@ -178,3 +178,23 @@ func TestRemoveSidecarConfigs_FailsOnARealRemovalError(t *testing.T) {
 		t.Errorf("the error must name what failed; got: %v", err)
 	}
 }
+
+// TestRemoveUnitFiles_FailsOnARealRemovalError — the mirror of the sidecar-config test: the body claims
+// BOTH paths surface a non-IsNotExist removal error, so both must be pinned. A read-only directory makes
+// os.Remove fail with EACCES while Stat still works.
+func TestRemoveUnitFiles_FailsOnARealRemovalError(t *testing.T) {
+	dir, paths := unitFixture(t, "charly-strata-sc117.container")
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	defer os.Chmod(dir, 0o700) //nolint:errcheck // best-effort cleanup
+
+	var out bytes.Buffer
+	err := removeUnitFiles(false, paths, &out)
+	if err == nil {
+		t.Fatal("a unit that cannot be removed must return an error, not be swallowed")
+	}
+	if !strings.Contains(err.Error(), "removing") {
+		t.Errorf("the error must name what failed; got: %v", err)
+	}
+}
