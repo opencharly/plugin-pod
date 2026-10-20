@@ -14,11 +14,11 @@ func TestDeployEntryDiscardNote_NamesWhatIsLostAndHowToKeepIt(t *testing.T) {
 	got := deployEntryDiscardNote("strata", "sc117")
 
 	for _, want := range []string{
-		"strata/sc117",              // which deployment
-		"published port",            // the thing that actually bit (#989)
-		"devices", "env",            // the rest of what lives in the entry
-		"--keep-deploy",             // how to keep it instead
-		"charly config",             // how to recreate it
+		"strata/sc117",   // which deployment
+		"published port", // the thing that actually bit (#989)
+		"devices", "env", // the rest of what lives in the entry
+		"--keep-deploy", // how to keep it instead
+		"charly config", // how to recreate it
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the note must mention %q; got: %s", want, got)
