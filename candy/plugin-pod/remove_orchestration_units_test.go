@@ -198,3 +198,23 @@ func TestRemoveUnitFiles_FailsOnARealRemovalError(t *testing.T) {
 		t.Errorf("the error must name what failed; got: %v", err)
 	}
 }
+
+// TestRemoveUnitFiles_KeepReportsOnlyExistingUnits — the mirror of the missing-unit case on the discard
+// path: with --keep-deploy, a path that does not exist must NOT be announced as kept. Announcing it is
+// the same lie as announcing a removal that never happened.
+func TestRemoveUnitFiles_KeepReportsOnlyExistingUnits(t *testing.T) {
+	dir, paths := unitFixture(t, "charly-strata-sc117.container")
+	absent := filepath.Join(dir, "charly-strata-sc117.pod")
+
+	var out bytes.Buffer
+	if err := removeUnitFiles(true, append(paths, absent), &out); err != nil {
+		t.Fatalf("keep branch returned an error: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "charly-strata-sc117.container") {
+		t.Errorf("an existing unit must be reported as kept; got: %q", got)
+	}
+	if strings.Contains(got, "charly-strata-sc117.pod") {
+		t.Errorf("a unit that does not exist must NOT be reported as kept; got: %q", got)
+	}
+}

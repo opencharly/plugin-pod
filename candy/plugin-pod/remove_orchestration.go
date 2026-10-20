@@ -383,7 +383,13 @@ func removeSidecarConfigs(keepDeploy bool, scDir, podBase string, sidecarNames [
 // function so the decision is testable against real files instead of only by reading the call site.
 func removeUnitFiles(keepDeploy bool, paths []string, w io.Writer) error {
 	if keepDeploy {
+		// Report only what is actually there: announcing "Kept <path>" for a unit that does not exist
+		// is the mirror of announcing a removal that never happened — the exact defect this file just
+		// stopped doing on the discard path.
 		for _, p := range paths {
+			if _, err := os.Stat(p); err != nil {
+				continue
+			}
 			fmt.Fprintf(w, "Kept %s (--keep-deploy)\n", p)
 		}
 		return nil
