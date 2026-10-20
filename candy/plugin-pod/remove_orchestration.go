@@ -304,6 +304,21 @@ func cleanDeployEntry(ctx context.Context, boxName, instance string) error {
 // runPodRemove is the full `charly remove` orchestration, ported verbatim from the former
 // charly/commands.go podRemoveCmd.Run() (minus tunnel-stop, already handled by the caller, and
 // minus the arbiter-release bracket, which the caller defers to the host seam).
+// deployEntryDiscardNote is the message printed when `remove` deletes the deploy entry. Without this
+// line the removal is silent, and that entry is where the deployment's CONFIGURATION lives — the image
+// tag, the published host port (resolved_port), the device set and the env. Losing the port that way is
+// what made a remove+re-add come back on a random port (charly#989), so the operator is told what goes
+// and how to keep it.
+func deployEntryDiscardNote(boxName, instance string) string {
+	label := boxName
+	if instance != "" {
+		label = boxName + "/" + instance
+	}
+	return fmt.Sprintf("[charly] removed the deploy entry for %s: its configuration goes with it "+
+		"(image tag, published port, devices, env). Re-create it with `charly config`, or pass "+
+		"--keep-deploy to keep the entry and only drop the instance.", label)
+}
+
 func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string) error {
 	boxName := kit.ResolveBoxName(box)
 
@@ -447,6 +462,8 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		if !keepDeploy {
 			if err := cleanDeployEntry(cmdCtx, boxName, instance); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: cleaning deploy entry: %v\n", err)
+			} else {
+				fmt.Fprintln(os.Stderr, deployEntryDiscardNote(boxName, instance))
 			}
 		}
 		return nil
@@ -469,6 +486,8 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 	if !keepDeploy {
 		if err := cleanDeployEntry(cmdCtx, boxName, instance); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: cleaning deploy entry: %v\n", err)
+		} else {
+			fmt.Fprintln(os.Stderr, deployEntryDiscardNote(boxName, instance))
 		}
 	}
 	return nil
