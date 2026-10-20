@@ -419,10 +419,14 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 
 		// Remove sidecar .container files (exact-name match, no prefix glob). Sources sidecar
 		// names from charly.yml — see resolveSidecarNames for why charly.yml is authoritative.
-		for _, sc := range sidecarNames {
-			scPath := filepath.Join(qdir, podBase+"-"+sc+".container")
-			if err := os.Remove(scPath); err == nil {
-				fmt.Fprintf(os.Stderr, "Removed %s\n", scPath)
+		// --keep-deploy keeps the sidecar units too: they ARE part of the deployment whose entry and
+		// units we are preserving, so deleting them would leave a half-kept deploy that cannot start.
+		if !keepDeploy {
+			for _, sc := range sidecarNames {
+				scPath := filepath.Join(qdir, podBase+"-"+sc+".container")
+				if err := os.Remove(scPath); err == nil {
+					fmt.Fprintf(os.Stderr, "Removed %s\n", scPath)
+				}
 			}
 		}
 
