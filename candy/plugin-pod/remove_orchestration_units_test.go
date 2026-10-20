@@ -104,3 +104,52 @@ func TestDeployUnitPaths_NoSidecarsYieldsTwo(t *testing.T) {
 		t.Errorf("a sidecar-less deploy must yield 2 paths, got %d: %v", len(got), got)
 	}
 }
+
+// TestRemoveSidecarConfigs_KeepDeployLeavesThemOnDisk — the sidecar CONFIG files are the layer after the
+// sidecar UNITS: `<podBase>-<sidecar>-<purpose>.<ext>` in the sidecar config dir. Keeping the entry and
+// the units but deleting these still leaves a deployment `start` cannot fully reproduce, so the keep
+// branch must touch nothing. Fails if the guard is removed.
+func TestRemoveSidecarConfigs_KeepDeployLeavesThemOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	keep := filepath.Join(dir, "charly-strata-sc117-ts-serve.json")
+	other := filepath.Join(dir, "charly-other-ts-serve.json")
+	for _, p := range []string{keep, other} {
+		if err := os.WriteFile(p, []byte("{}"), 0o644); err != nil {
+			t.Fatalf("fixture: %v", err)
+		}
+	}
+	var out bytes.Buffer
+	removeSidecarConfigs(true, dir, "charly-strata-sc117", []string{"ts"}, &out)
+
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("--keep-deploy must leave %s on disk: %v", filepath.Base(keep), err)
+	}
+	if got := out.String(); strings.Contains(got, "Removed") {
+		t.Errorf("the keep branch must not report removals; got: %q", got)
+	}
+}
+
+// TestRemoveSidecarConfigs_DefaultRemovesOnlyThisDeploysFiles — without the flag they go, and the
+// sidecar-name anchoring keeps a sibling deploy's file safe.
+func TestRemoveSidecarConfigs_DefaultRemovesOnlyThisDeploysFiles(t *testing.T) {
+	dir := t.TempDir()
+	ours := filepath.Join(dir, "charly-strata-sc117-ts-serve.json")
+	other := filepath.Join(dir, "charly-other-ts-serve.json")
+	for _, p := range []string{ours, other} {
+		if err := os.WriteFile(p, []byte("{}"), 0o644); err != nil {
+			t.Fatalf("fixture: %v", err)
+		}
+	}
+	var out bytes.Buffer
+	removeSidecarConfigs(false, dir, "charly-strata-sc117", []string{"ts"}, &out)
+
+	if _, err := os.Stat(ours); err == nil {
+		t.Errorf("the default path must remove %s", filepath.Base(ours))
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("another deploy's file must be untouched: %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "Removed") {
+		t.Errorf("the default path must report the removal; got: %q", got)
+	}
+}

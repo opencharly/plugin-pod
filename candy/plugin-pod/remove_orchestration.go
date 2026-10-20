@@ -344,6 +344,32 @@ func deployUnitPaths(qdir, boxName, instance, podBase string, sidecarNames []str
 	return paths
 }
 
+// removeSidecarConfigs deletes the sidecar config files belonging to this deploy — unless the caller
+// asked to KEEP the deploy, in which case none are touched. They are part of the deployment whose entry
+// and units `--keep-deploy` preserves; deleting them leaves the same half-kept deploy the unit guard
+// exists to prevent, one layer out (plugin-pod#18). Kept as a function so the decision is testable
+// against real files rather than only by reading the call site.
+func removeSidecarConfigs(keepDeploy bool, scDir, podBase string, sidecarNames []string, w io.Writer) {
+	if keepDeploy {
+		return
+	}
+	entries, err := os.ReadDir(scDir)
+	if err != nil {
+		return
+	}
+	for _, sc := range sidecarNames {
+		scfPrefix := podBase + "-" + sc + "-"
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), scfPrefix) {
+				scfPath := filepath.Join(scDir, entry.Name())
+				if err := os.Remove(scfPath); err == nil {
+					fmt.Fprintf(w, "Removed %s\n", scfPath)
+				}
+			}
+		}
+	}
+}
+
 // removeUnitFiles deletes the deployment's unit files — unless the caller asked to KEEP the deploy, in
 // which case none are touched. The units (quadlet, pod, and every sidecar .container) are part of the
 // deployment whose entry `--keep-deploy` preserves; deleting any of them leaves a half-kept deploy that
@@ -452,22 +478,8 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		// --keep-deploy keeps the sidecar CONFIG files too: they are part of the deployment whose
 		// entry and units we just preserved. Deleting them leaves the same half-kept deploy the unit
 		// guard exists to prevent, one layer further down (plugin-pod#18).
-		if !keepDeploy {
-			if scDir, scErr := kit.SidecarConfigDir(); scErr == nil {
-				if entries, err := os.ReadDir(scDir); err == nil {
-					for _, sc := range sidecarNames {
-						scfPrefix := podBase + "-" + sc + "-"
-						for _, entry := range entries {
-							if strings.HasPrefix(entry.Name(), scfPrefix) {
-								scfPath := filepath.Join(scDir, entry.Name())
-								if err := os.Remove(scfPath); err == nil {
-									fmt.Fprintf(os.Stderr, "Removed %s\n", scfPath)
-								}
-							}
-						}
-					}
-				}
-			}
+		if scDir, scErr := kit.SidecarConfigDir(); scErr == nil {
+			removeSidecarConfigs(keepDeploy, scDir, podBase, sidecarNames, os.Stderr)
 		}
 
 		// Stop companion services before removing (best-effort)
