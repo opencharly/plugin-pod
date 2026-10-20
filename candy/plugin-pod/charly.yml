@@ -40,10 +40,6 @@ restart-skill:
         name: restart
         family: pod-verbs
         owner: plugin-pod
-        description: |-
-            `charly restart <box>` — restart a deployment's service. Use to apply a changed
-            config, recover a wedged service, or cycle a container without a full
-            remove/config/start cycle.
         triggers:
             - "`charly restart` / restart a deployment / cycle a container"
 volume-skill:
@@ -51,10 +47,6 @@ volume-skill:
         name: volume
         family: pod-verbs
         owner: plugin-pod
-        description: |-
-            `charly volume list` / `charly volume reset` — inspect and reset a deployment's
-            charly-managed named volumes. The charly-native replacement for ad-hoc
-            `podman volume ls/inspect/rm`.
         triggers:
             - "`charly volume` / list a deployment's volumes / reset a volume / wipe sidecar state / podman volume"
 cp-skill:
@@ -62,8 +54,5 @@ cp-skill:
         name: cp
         family: pod-verbs
         owner: plugin-pod
-        description: |-
-            `charly cp` — copy a file between the host and a running container (app or
-            sidecar). The charly-native replacement for ad-hoc `podman cp`.
         triggers:
             - "`charly cp` / copy a file into a container / copy out of a container / podman cp"
