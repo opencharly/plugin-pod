@@ -396,16 +396,25 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 			return err
 		}
 
-		qpath := filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance))
-		if err := os.Remove(qpath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("removing quadlet file: %w", err)
-		}
-		fmt.Fprintf(os.Stderr, "Removed %s\n", qpath)
+		// With --keep-deploy the deploy entry AND its unit stay put, so `charly start` can bring the
+		// same deployment back on the SAME published port. Removing the unit while keeping the entry
+		// was the worst of both: `start` then fails with "resolve plan: not configured" and the only
+		// recovery is `charly config`, which allocates a NEW random port (plugin-pod#18).
+		if keepDeploy {
+			qpath := filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance))
+			fmt.Fprintf(os.Stderr, "Kept %s (--keep-deploy): `charly start` resumes this deployment on its recorded port\n", qpath)
+		} else {
+			qpath := filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance))
+			if err := os.Remove(qpath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("removing quadlet file: %w", err)
+			}
+			fmt.Fprintf(os.Stderr, "Removed %s\n", qpath)
 
-		// Remove pod file if it exists (sidecar mode)
-		podPath := filepath.Join(qdir, kit.PodQuadletFilenameInstance(boxName, instance))
-		if err := os.Remove(podPath); err == nil {
-			fmt.Fprintf(os.Stderr, "Removed %s\n", podPath)
+			// Remove pod file if it exists (sidecar mode)
+			podPath := filepath.Join(qdir, kit.PodQuadletFilenameInstance(boxName, instance))
+			if err := os.Remove(podPath); err == nil {
+				fmt.Fprintf(os.Stderr, "Removed %s\n", podPath)
+			}
 		}
 
 		// Remove sidecar .container files (exact-name match, no prefix glob). Sources sidecar
