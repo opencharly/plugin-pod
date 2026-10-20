@@ -330,6 +330,30 @@ func deployEntryDiscardNote(boxName, instance string) string {
 		"--keep-deploy to keep the entry and only drop the instance.", label)
 }
 
+// removeUnitFiles deletes the deployment's unit files — unless the caller asked to KEEP the deploy, in
+// which case none are touched. The units (quadlet, pod, and every sidecar .container) are part of the
+// deployment whose entry `--keep-deploy` preserves; deleting any of them leaves a half-kept deploy that
+// `charly start` cannot resume, which is exactly the failure plugin-pod#18 is about. Kept as its own
+// function so the decision is testable against real files instead of only by reading the call site.
+func removeUnitFiles(keepDeploy bool, paths []string, w io.Writer) error {
+	if keepDeploy {
+		for _, p := range paths {
+			fmt.Fprintf(w, "Kept %s (--keep-deploy)\n", p)
+		}
+		return nil
+	}
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("removing %s: %w", p, err)
+		}
+		fmt.Fprintf(w, "Removed %s\n", p)
+	}
+	return nil
+}
+
 // runPodRemove is the full `charly remove` orchestration, ported verbatim from the former
 // charly/commands.go podRemoveCmd.Run() (minus tunnel-stop, already handled by the caller, and
 // minus the arbiter-release bracket, which the caller defers to the host seam).
@@ -400,35 +424,19 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		// same deployment back on the SAME published port. Removing the unit while keeping the entry
 		// was the worst of both: `start` then fails with "resolve plan: not configured" and the only
 		// recovery is `charly config`, which allocates a NEW random port (plugin-pod#18).
-		if keepDeploy {
-			qpath := filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance))
-			fmt.Fprintf(os.Stderr, "Kept %s (--keep-deploy): `charly start` resumes this deployment on its recorded port\n", qpath)
-		} else {
-			qpath := filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance))
-			if err := os.Remove(qpath); err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("removing quadlet file: %w", err)
-			}
-			fmt.Fprintf(os.Stderr, "Removed %s\n", qpath)
-
-			// Remove pod file if it exists (sidecar mode)
-			podPath := filepath.Join(qdir, kit.PodQuadletFilenameInstance(boxName, instance))
-			if err := os.Remove(podPath); err == nil {
-				fmt.Fprintf(os.Stderr, "Removed %s\n", podPath)
-			}
+		unitPaths := []string{
+			filepath.Join(qdir, kit.QuadletFilenameInstance(boxName, instance)),
+			filepath.Join(qdir, kit.PodQuadletFilenameInstance(boxName, instance)),
+		}
+		for _, sc := range sidecarNames {
+			unitPaths = append(unitPaths, filepath.Join(qdir, podBase+"-"+sc+".container"))
+		}
+		if err := removeUnitFiles(keepDeploy, unitPaths, os.Stderr); err != nil {
+			return err
 		}
 
 		// Remove sidecar .container files (exact-name match, no prefix glob). Sources sidecar
 		// names from charly.yml — see resolveSidecarNames for why charly.yml is authoritative.
-		// --keep-deploy keeps the sidecar units too: they ARE part of the deployment whose entry and
-		// units we are preserving, so deleting them would leave a half-kept deploy that cannot start.
-		if !keepDeploy {
-			for _, sc := range sidecarNames {
-				scPath := filepath.Join(qdir, podBase+"-"+sc+".container")
-				if err := os.Remove(scPath); err == nil {
-					fmt.Fprintf(os.Stderr, "Removed %s\n", scPath)
-				}
-			}
-		}
 
 		// Remove sidecar config files. Naming convention is `<podBase>-<sidecar>-<purpose>.<ext>`
 		// (e.g. charly-foo-tailscale-serve.json). The prefix is anchored to the sidecar NAME so
