@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -301,6 +302,18 @@ func cleanDeployEntry(ctx context.Context, boxName, instance string) error {
 	return nil
 }
 
+// cleanDeployEntryAndReport is the whole post-removal deploy-entry step, with the cleaner injected so
+// the two outcomes are testable: a successful clean reports what went with the entry, and a failed one
+// reports the error instead — never the note, which would claim a removal that did not happen.
+func cleanDeployEntryAndReport(ctx context.Context, boxName, instance string,
+	clean func(context.Context, string, string) error, w io.Writer) {
+	if err := clean(ctx, boxName, instance); err != nil {
+		fmt.Fprintf(w, "Warning: cleaning deploy entry: %v\n", err)
+		return
+	}
+	fmt.Fprintln(w, deployEntryDiscardNote(boxName, instance))
+}
+
 // deployEntryDiscardNote is the message printed when `remove` deletes the deploy entry. Without this
 // line the removal is silent, and that entry is where the deployment's CONFIGURATION lives — the image
 // tag, the published host port (resolved_port), the device set and the env. Losing the port that way is
@@ -311,7 +324,8 @@ func deployEntryDiscardNote(boxName, instance string) string {
 	if instance != "" {
 		label = boxName + "/" + instance
 	}
-	return fmt.Sprintf("[charly] removed the deploy entry for %s: its configuration goes with it "+
+	return fmt.Sprintf("[charly] the deploy entry for %s is gone: its configuration goes with it "+
+		"(if there was one — this line prints whether or not it existed) "+
 		"(image tag, published port, devices, env). Re-create it with `charly config`, or pass "+
 		"--keep-deploy to keep the entry and only drop the instance.", label)
 }
@@ -460,11 +474,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 			purgeDeployArtifacts(engine, boxName, instance)
 		}
 		if !keepDeploy {
-			if err := cleanDeployEntry(cmdCtx, boxName, instance); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: cleaning deploy entry: %v\n", err)
-			} else {
-				fmt.Fprintln(os.Stderr, deployEntryDiscardNote(boxName, instance))
-			}
+			cleanDeployEntryAndReport(cmdCtx, boxName, instance, cleanDeployEntry, os.Stderr)
 		}
 		return nil
 	}
@@ -484,11 +494,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		purgeDeployArtifacts(engine, boxName, instance)
 	}
 	if !keepDeploy {
-		if err := cleanDeployEntry(cmdCtx, boxName, instance); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: cleaning deploy entry: %v\n", err)
-		} else {
-			fmt.Fprintln(os.Stderr, deployEntryDiscardNote(boxName, instance))
-		}
+		cleanDeployEntryAndReport(cmdCtx, boxName, instance, cleanDeployEntry, os.Stderr)
 	}
 	return nil
 }
