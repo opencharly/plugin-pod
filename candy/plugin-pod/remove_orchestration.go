@@ -469,9 +469,6 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 			return err
 		}
 
-		// Remove sidecar .container files (exact-name match, no prefix glob). Sources sidecar
-		// names from charly.yml — see resolveSidecarNames for why charly.yml is authoritative.
-
 		// Remove sidecar config files. Naming convention is `<podBase>-<sidecar>-<purpose>.<ext>`
 		// (e.g. charly-foo-tailscale-serve.json). The prefix is anchored to the sidecar NAME so
 		// unrelated sidecars/bases can't match.
