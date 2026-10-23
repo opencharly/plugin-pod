@@ -56,3 +56,64 @@ cp-skill:
         owner: plugin-pod
         triggers:
             - "`charly cp` / copy a file into a container / copy out of a container / podman cp"
+
+# ---------------------------------------------------------------------------
+# The `charly start|stop|config|update|logs|remove|service|shell` VERB skills —
+# authored beside the handlers they document.
+#
+# Each is a ROUTING-ONLY node: `name`/`family`/`owner` (plus `triggers:` when the
+# skill generates DISPATCHER.md rows). The prose is the skill FILE at
+# `<repo root>/.agents/skills/<name>/SKILL.md`, never an inline `description:`
+# or `content:` — an inline body that disagrees with its file is a hard error in
+# the marketplace generator (`candy/plugin-marketplace/skillfile.go`), and
+# copying a body back into the node is how a skill drifts from its own file.
+#
+# `owner:` names THIS candy, because this candy IS the `command:<verb>` provider
+# these skills document: the `charly <verb>` command surface is plugin-pod's, not
+# core's. `family: core` is the marketplace family the skills were authored
+# under, kept so every existing `/charly-core:<name>` address still resolves.
+# This candy composes no image — it is listed in the charly providers registry,
+# never in a box's `candy:` chain — so these nodes add no entry to any
+# `ai.opencharly.skill` OCI label; the bodies reach consumers through the
+# generated marketplace corpus.
+# ---------------------------------------------------------------------------
+charly-config-skill:
+    skill:
+        name: charly-config
+        family: core
+        owner: plugin-pod
+charly-update-skill:
+    skill:
+        name: charly-update
+        family: core
+        owner: plugin-pod
+logs-skill:
+    skill:
+        name: logs
+        family: core
+        owner: plugin-pod
+remove-skill:
+    skill:
+        name: remove
+        family: core
+        owner: plugin-pod
+service-skill:
+    skill:
+        name: service
+        family: core
+        owner: plugin-pod
+shell-skill:
+    skill:
+        name: shell
+        family: core
+        owner: plugin-pod
+start-skill:
+    skill:
+        name: start
+        family: core
+        owner: plugin-pod
+stop-skill:
+    skill:
+        name: stop
+        family: core
+        owner: plugin-pod

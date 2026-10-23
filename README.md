@@ -43,9 +43,12 @@ charly volume list my-app
 - `charly.yml` — the root project manifest (`discover: candy` + `discover: box`)
   plus the `check-pod` disposable R10 bed.
 - `.github/workflows/tag-on-merge.yml` — CalVer tag + `CHANGELOG/` on merge.
-- The candy embeds three skill entities — `restart-skill:`, `volume-skill:`, and
-  `cp-skill:` — the projected sources for `/charly-pod-verbs:restart`,
-  `/charly-pod-verbs:volume`, and `/charly-pod-verbs:cp`.
+- `.agents/skills/<name>/SKILL.md` — the prose for the candy's eleven `skill:`
+  entities, one directory per skill.
+- The candy embeds eleven skill entities — `restart-skill:`, `volume-skill:`,
+  and `cp-skill:` (family `pod-verbs`), plus the eight `core` verb skills for
+  `start`, `stop`, `config`, `update`, `logs`, `remove`, `service`, `shell` —
+  the projected sources for `/charly-pod-verbs:*` and `/charly-core:*`.
 
 ## R10 witness
 
@@ -57,8 +60,8 @@ deploy-target rendering in one run.
 ## Related
 
 - Owning skills: `/charly-pod-verbs:restart`, `/charly-pod-verbs:volume`,
-  `/charly-pod-verbs:cp` (projected from this candy's own `skill:` entities).
-- `/charly-core:start` / `/charly-core:stop` / `/charly-core:shell` — the
-  command reference (owned by `pod-charly-core`).
+  `/charly-pod-verbs:cp`, and the eight `/charly-core:*` verb skills
+  (`charly-config`, `charly-update`, `logs`, `remove`, `service`, `shell`,
+  `start`, `stop`) — all projected from this candy's own `skill:` entities.
 - `/charly-internals:plugin` — the plugin/provider model.
 - [`opencharly/charly`](https://github.com/opencharly/charly) — the charly CLI.

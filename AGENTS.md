@@ -5,14 +5,19 @@ Standalone plugin repo owning the pod-lifecycle CLI (`command:start` / `stop` /
 `update`). The plugin is a Go module at `candy/plugin-pod/` (module path
 `github.com/opencharly/plugin-pod/candy/plugin-pod`); the root `charly.yml`
 declares `discover: candy` + `discover: box` (so the repo is a project, its candy
-is scanned, and the `check-pod` R10 bed is declared) and the candy carries three
-embedded `skill:` entities.
+is scanned, and the `check-pod` R10 bed is declared) and the candy carries eleven
+`skill:` entities — three in the `pod-verbs` family (`restart`, `volume`, `cp`)
+and the eight `core` verb skills its own command words own (`charly-config`,
+`charly-update`, `logs`, `remove`, `service`, `shell`, `start`, `stop`).
 
 Canonical files:
 
 - `candy/plugin-pod/charly.yml` — the `plugin-pod:` candy entity (`plugin:`
-  block, `plan:` check) and the `restart-skill:` / `volume-skill:` /
-  `cp-skill:` entities.
+  block, `plan:` check) and the eleven `skill:` entities (`restart-skill:` /
+  `volume-skill:` / `cp-skill:` plus the eight `core` verb nodes).
+- `.agents/skills/<name>/SKILL.md` — the prose for those eleven, one directory
+  per skill at the repo root (the Agent-Skills standard tree the marketplace
+  generator and the `ai.opencharly.skill` label both read).
 - `candy/plugin-pod/` — the Go source: `plugin.go`, `command.go`, `pod_cmd.go`,
   `enc_cmd.go`, `host_seams.go`, `remove_orchestration.go`, `remove_tunnel.go`,
   `service_resolve.go`, `schema/pod.cue`, `cmd/serve/main.go`.
@@ -25,8 +30,10 @@ Canonical files:
 
 - `/charly-pod-verbs:restart`, `/charly-pod-verbs:volume`, `/charly-pod-verbs:cp`
   — the projected owning skills for three of this candy's command words.
-- `/charly-core:start` / `/charly-core:stop` / `/charly-core:shell` — the
-  command reference for the registry-bound words (owned by `pod-charly-core`).
+- `/charly-core:charly-config`, `/charly-core:start`, `/charly-core:stop`,
+  `/charly-core:shell`, `/charly-core:service`, `/charly-core:logs`,
+  `/charly-core:remove`, `/charly-core:charly-update` — the command reference for
+  the registry-bound words, projected from THIS candy's own `skill:` entities.
 - `/charly-internals:plugin` — the plugin authoring reference: the `plugin:`
   block, the `command` provider class, the host-build seam pattern, the
   per-plugin CUE-schema contract.
@@ -52,8 +59,9 @@ Canonical files:
 - `charly restart` stays pure `sdk/kit` + `sdk/deploykit` with zero host
   coupling; the registry-bound commands keep their per-command host-build seam
   (the host runs the original orchestration `Run()` verbatim).
-- Keep each embedded `*-skill:` entity in step with its command word — they are
-  the projected sources for `/charly-pod-verbs:restart|volume|cp`.
+- Keep each `skill:` entity in step with its command word — they are the
+  projected sources for `/charly-pod-verbs:restart|volume|cp` and for the eight
+  `/charly-core:*` verb skills this candy owns.
 - Placement of this candy is independent of `candy/plugin-deploy-pod`'s.
 
 ## Landing
