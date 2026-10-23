@@ -1,0 +1,61 @@
+---
+name: logs
+description: |-
+  Service log viewing for running containers — `charly logs`, viewing container output, debugging service issues.
+---
+
+# charly logs -- Service Log Viewing
+
+## Overview
+
+Displays logs from a running or recently stopped service container. In quadlet mode, reads from journalctl. In direct mode, reads from the container engine's log store.
+
+## Quick Reference
+
+| Action | Command | Description |
+|--------|---------|-------------|
+| View logs | `charly logs <image>` | Show recent logs |
+| Follow logs | `charly logs <image> -f` | Stream logs in real time |
+| With instance | `charly logs <image> -i 2` | Logs from specific instance |
+
+## Usage
+
+```bash
+# View recent logs
+charly logs jupyter
+
+# Follow logs in real time (Ctrl+C to stop)
+charly logs ollama -f
+
+# Show last 100 lines
+charly logs immich
+
+# Logs from a specific instance
+charly logs openclaw -i 2
+
+# Combine follow with tail
+charly logs comfyui -f
+```
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `-f, --follow` | Stream logs continuously |
+| `-i, --instance INSTANCE` | Target a specific container instance |
+| `--sidecar NAME` | Show the named SIDECAR container's logs instead of the app container's |
+
+## Behavior
+
+- **Quadlet mode:** Uses `journalctl --user -u charly-<image>.service`
+- **Direct mode:** Uses `<engine> logs <container>`
+- Quadlet mode is the default and recommended deployment method
+- Logs include both stdout and stderr from the container
+
+## Cross-References
+
+- `/charly-build:pull` -- Prerequisite: fetch the image into local storage; handles remote refs (`@github.com/...`) and the `ErrImageNotLocal` recovery path
+
+- `/charly-core:charly-status` -- Check service status
+- `/charly-core:service` -- Service lifecycle management
+- `/charly-core:start` -- Starting services
