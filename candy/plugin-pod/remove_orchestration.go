@@ -420,18 +420,12 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 	// ONE selection model (sdk/deploykit): deploy entry > env > settings > built-in default, then
 	// the engine's capability facts. The former hand-rolled deploy-entry-else-runtime lookup and
 	// its silent unset-engine fallback are DELETED — a retired/unknown engine word is an error, not
-	// a quiet resolution to the default engine.
-	sel, err := resolvePodSelectionFor(boxName, instance, rt)
+	// a quiet resolution to the default engine. resolveTeardownSelection keeps ONLY the documented
+	// best-effort case (an unreadable overlay must not block orphan teardown) and warns when it
+	// degrades; a readable overlay is resolved strictly.
+	sel, err := resolveTeardownSelection(boxName, instance, rt)
 	if err != nil {
-		// TEARDOWN MUST STILL RUN for an orphaned deploy whose overlay is unreadable — the
-		// pre-existing best-effort contract shared by removeVolumes/resolveSidecarNames. Degrade
-		// VISIBLY to the env/settings fold (the warning names the unreadable overlay); never
-		// silently, and never at the cost of leaving containers and units behind.
-		fmt.Fprintf(os.Stderr, "Warning: %v — resolving the teardown engine from the runtime settings\n", err)
-		sel, err = resolvePodSelection(deploykit.Selection{}, rt)
-		if err != nil {
-			return err
-		}
+		return err
 	}
 	engine := sel.binary()
 	containerName := kit.ContainerNameInstance(boxName, instance)

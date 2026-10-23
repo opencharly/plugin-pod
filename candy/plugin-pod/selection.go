@@ -17,6 +17,7 @@ package pod
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
@@ -33,9 +34,9 @@ type podSelection struct {
 
 // Engine is the resolved container-engine WORD (never `auto`: the resolver resolves it). The
 // container/image probes take the WORD, because each resolves the binary through the capability
-// table itself: `kit.EngineBinary("containerd")` is `nerdctl`, while handing them the BINARY
-// (`"nerdctl"`) makes their own resolve fall back to the default engine (`"podman"`). Pass the
-// word to a probe; pass binary() only to an argv.
+// table itself; handing them a BINARY makes that resolve fall back to the default engine. Pass the
+// word to a probe; pass binary() only to an argv. TestProbeBoundaryTakesTheEngineWord pins this and
+// logs the exact fallback.
 func (s podSelection) Engine() spec.EngineName { return s.Target.Engine }
 
 // binary is the engine's CLI binary for argv construction. It is a capability fact (containerd is
@@ -92,6 +93,20 @@ func resolvePodSelectionFor(box, instance string, rt *kit.ResolvedRuntime) (podS
 	dc, err := loadPodDeployConfig()
 	if err != nil {
 		return podSelection{}, fmt.Errorf("load the deploy overlay for %q: %w", spec.DeployKey(box, instance), err)
+	}
+	return resolvePodSelectionFromConfig(dc, box, instance, rt)
+}
+
+// resolveTeardownSelection resolves the engine for `charly remove`. Its contract is narrower than
+// resolvePodSelectionFor's: an UNREADABLE overlay must not block tearing down an orphaned deploy
+// (the pre-existing best-effort contract shared by removeVolumes/resolveSidecarNames), so it
+// degrades to the env/settings fold, VISIBLY. A READABLE overlay is still resolved strictly, so a
+// retired/unknown engine word is a hard error here too and never silently runs the default engine.
+func resolveTeardownSelection(box, instance string, rt *kit.ResolvedRuntime) (podSelection, error) {
+	dc, err := loadPodDeployConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v — resolving the teardown engine from the runtime settings\n", err)
+		return resolvePodSelection(deploykit.Selection{}, rt)
 	}
 	return resolvePodSelectionFromConfig(dc, box, instance, rt)
 }

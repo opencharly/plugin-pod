@@ -2,11 +2,14 @@ package pod
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
+	"github.com/opencharly/spec/container"
 	"github.com/opencharly/spec/spec"
 )
 
@@ -148,6 +151,79 @@ func TestProbeBoundaryTakesTheEngineWord(t *testing.T) {
 				t.Logf("control: a probe handed the BINARY %q would invoke %q — the word is required", want, got)
 			}
 		}
+	}
+}
+
+// TestResolveTeardownSelection pins the teardown contract: an UNREADABLE overlay degrades to the
+// runtime fold (an orphaned deploy must still be torn down), while a READABLE overlay with a
+// retired engine word stays a HARD error — never a silent default-engine teardown.
+func TestResolveTeardownSelection(t *testing.T) {
+	wantEngine := spec.EngineNames[0]
+	orig := loadPodDeployConfig
+	t.Cleanup(func() { loadPodDeployConfig = orig })
+
+	// Unreadable overlay: teardown still resolves, from the runtime fold.
+	loadPodDeployConfig = func() (*deploykit.DeployConfig, error) { return nil, errors.New("unreadable overlay") }
+	sel, err := resolveTeardownSelection("probe", "", runtimeWithEngine(t, wantEngine))
+	if err != nil {
+		t.Fatalf("teardown refused to resolve on an unreadable overlay: %v", err)
+	}
+	if string(sel.Target.Engine) != wantEngine {
+		t.Errorf("teardown engine = %q, want the runtime fold %q", sel.Target.Engine, wantEngine)
+	}
+
+	// Readable overlay, retired engine word: a hard error, not a silent default.
+	loadPodDeployConfig = func() (*deploykit.DeployConfig, error) {
+		return &deploykit.DeployConfig{Deploy: map[string]deploykit.DeployNode{
+			"probe": {Engine: spec.EngineName("nerdctl")},
+		}}, nil
+	}
+	if _, err := resolveTeardownSelection("probe", "", runtimeWithEngine(t, wantEngine)); err == nil {
+		t.Fatal("a retired engine word in a readable overlay resolved silently on the teardown path")
+	}
+}
+
+// TestProbesResolveTheEngineWordForContainerd proves the PROBE boundary itself, not just the
+// capability lookup: with a fake nerdctl (and a fake podman that answers WRONG-ENGINE) first on
+// PATH, the probes handed the WORD "containerd" must run nerdctl. The BINARY form is the trap the
+// capability table hides — its own resolve falls back to the default engine — so it is asserted as
+// the negative control too.
+func TestProbesResolveTheEngineWordForContainerd(t *testing.T) {
+	// Isolate the persistent image-label cache so this test's fake answers are the ones read.
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	dir := t.TempDir()
+	script := `#!/bin/sh
+for a in "$@"; do
+	case "$a" in
+		*"{{.Config.Image}}"*) echo fake-image-ref; exit 0 ;;
+		*"{{.State.Running}}"*) echo true; exit 0 ;;
+		*"{{json .Config.Labels}}"*) echo '{"ai.opencharly.box":"probe"}'; exit 0 ;;
+	esac
+done
+exit 0
+`
+	if err := os.WriteFile(filepath.Join(dir, "nerdctl"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake nerdctl: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "podman"), []byte("#!/bin/sh\necho WRONG-ENGINE\n"), 0o755); err != nil {
+		t.Fatalf("write fake podman: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if got := container.ContainerImage("containerd", "probe-ctr"); got != "fake-image-ref" {
+		t.Fatalf("ContainerImage(containerd) = %q; the probe did not resolve nerdctl", got)
+	}
+	if !kit.ContainerRunning("containerd", "probe-ctr") {
+		t.Fatal("ContainerRunning(containerd) = false; the probe did not resolve nerdctl")
+	}
+	if meta, err := deploykit.ExtractMetadata("containerd", "probe-img-"+filepath.Base(dir)); err != nil || meta == nil {
+		t.Fatalf("ExtractMetadata(containerd) = (%v, %v); the probe did not resolve nerdctl", meta, err)
+	}
+
+	// The binary form resolves through the capability table to the default engine: that is why
+	// every probe call site must pass the WORD. This is the round-2 control.
+	if got := container.ContainerImage(kit.EngineBinary("nerdctl"), "probe-ctr"); got != "WRONG-ENGINE" {
+		t.Errorf("the binary form no longer discriminates: got %q, want the fake podman answer", got)
 	}
 }
 
