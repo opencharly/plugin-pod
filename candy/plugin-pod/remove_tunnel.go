@@ -15,32 +15,32 @@ import (
 // completion). Mirrors candy/plugin-deploy-pod/lifecycle.go's podTunnelOp exactly (R3): both reach
 // the SAME compiled-in, placement-agnostic verb:tunnel provider over the SAME
 // {plugin_input:{method,config}} envelope.
-// The tunnel CONFIG itself is still resolved HOST-side, via the EXISTING pod-config-container-tunnel
-// seam (charly/host_build_pod_config_seams.go's hostBuildPodConfigContainerTunnel) — the SAME seam
-// candy/plugin-deploy-pod's resolvePodStartQuadlet/resolvePodStartDirect/resolvePodStopPlan already
-// call to populate PodLifecyclePlan.Tunnel for start/stop — because the resolution's true source,
-// TunnelConfigFromMetadata(*BoxMetadata), takes a charly-core-only type not portable into this
-// module (the running container's baked image ref + charly.yml overlay merge stay core Mechanisms).
-// No new seam was invented for this: both pieces (config-resolve seam, verb:tunnel provider) already
-// existed and were already load-bearing for pod start/stop before this leaf reused them for remove.
+// The tunnel CONFIG is resolved PLUGIN-SIDE (#55 coneC-dsh — the former
+// pod-config-container-tunnel host seam is DELETED): the running container's baked image ref, its
+// metadata and the charly.yml overlay merge are all plugin-reachable, and the engine that answers
+// the container/image probes comes from the ONE sdk selection model rather than a hand-picked
+// engine word.
 
 // resolveContainerTunnel resolves the running container's tunnel config PLUGIN-SIDE (#55 coneC-dsh
-// — the pod-config-container-tunnel host seam is DELETED). Reads the container's baked image ref
-// (container.ContainerImage — spec/container, plugin-reachable), extracts its metadata, merges the
-// per-host overlay (loadPodDeployConfig — the cycle-free loaderkit read), and resolves the tunnel
-// config. nil if none configured or on any resolution error — best-effort, matching the former
-// host leg's own best-effort framing.
-func resolveContainerTunnel(box, instance string) *spec.TunnelConfig {
+// — the pod-config-container-tunnel host seam is DELETED). The engine selection is the CALLER's
+// (the `charly remove` teardown selection), so this read can never re-resolve — or silently
+// swallow — a selection error. It only reads, and returns nil when there is no tunnel to stop.
+func resolveContainerTunnel(box, instance string, sel podSelection) *spec.TunnelConfig {
 	ctrName := spec.ContainerNameInstance(box, instance)
-	imageRef := container.ContainerImage("podman", ctrName)
+	// The overlay merge is best-effort: a tunnel config is an enhancement to the teardown, and an
+	// unreadable overlay means "no per-host tunnel overrides", never a missing teardown.
+	dc, _ := loadPodDeployConfig()
+	// The probes take the resolved engine WORD: each resolves the binary through the capability
+	// table itself, so handing them a BINARY would make that resolve fall back to the default
+	// engine (the control in TestProbeBoundaryTakesTheEngineWord logs the exact values).
+	imageRef := container.ContainerImage(string(sel.Engine()), ctrName)
 	if imageRef == "" {
 		return nil
 	}
-	meta, err := deploykit.ExtractMetadata("podman", imageRef)
+	meta, err := deploykit.ExtractMetadata(string(sel.Engine()), imageRef)
 	if err != nil || meta == nil {
 		return nil
 	}
-	dc, _ := loadPodDeployConfig()
 	deploykit.MergeDeployOntoMetadata(meta, dc, box, instance)
 	if meta.Tunnel == nil {
 		return nil
