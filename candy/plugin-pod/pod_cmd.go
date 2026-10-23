@@ -40,12 +40,12 @@ import (
 // the "pod-lifecycle" HostBuild op="remove" (#55 W3 A10b unified the former dedicated "pod-remove"
 // kind into this one), deferred here as the LAST step — same shape as pod start/stop's own bracket.
 //
-// RDD caught a real latent placement bug mid-port (see remove_orchestration.go's header): two
-// deploykit calls that "looked" portable (resolveSidecarNames' LoadDeployConfig,
-// runPodRemove's ResolveBoxEngineForDeploy) transitively depend on deploykit.DeployStateHost,
-// which only charly-core's own init() populates — so both were rerouted through their own
-// EXISTING seams (the host deploy-config loader, now retired by the loaderkit helper, and
-// pod-config-box-engine) instead of calling deploykit directly.
+// RDD caught a real latent placement bug mid-port (see remove_orchestration.go's header):
+// deploykit's bare LoadDeployConfig transitively depends on deploykit.DeployStateHost, which only
+// charly-core's own init() populates — so the overlay reads stay on the cycle-free loaderkit
+// helper instead of calling deploykit directly. Engine selection is the ONE sdk selection model
+// (selection.go): deploykit.ResolvePodEngine + ResolveContainerdTarget carry no DeployStateHost
+// dependency, and the retired divergent sdk engine-lookup path (which did) is deleted.
 
 // StartCmd launches a container with supervisord in the background — the `charly start` grammar.
 type StartCmd struct {
@@ -320,7 +320,11 @@ func (c *VolumeListCmd) Run() error {
 		return err
 	}
 	boxName := kit.ResolveBoxName(c.Box)
-	bin := kit.EngineBinary(deploykit.ResolveBoxEngineForDeploy(cmdCtx, boxName, c.Instance, rt.RunEngine))
+	sel, err := resolvePodSelectionFor(boxName, c.Instance, rt)
+	if err != nil {
+		return err
+	}
+	bin := sel.binary()
 	prefix := kit.ContainerNameInstance(boxName, c.Instance) + "-"
 
 	out, err := exec.Command(bin, "volume", "ls", "--format", "{{.Name}}").Output()
@@ -363,7 +367,11 @@ func (c *VolumeResetCmd) Run() error {
 		return err
 	}
 	boxName := kit.ResolveBoxName(c.Box)
-	bin := kit.EngineBinary(deploykit.ResolveBoxEngineForDeploy(cmdCtx, boxName, c.Instance, rt.RunEngine))
+	sel, err := resolvePodSelectionFor(boxName, c.Instance, rt)
+	if err != nil {
+		return err
+	}
+	bin := sel.binary()
 	full := c.Name
 	if !strings.HasPrefix(full, "charly-") {
 		full = kit.ContainerNameInstance(boxName, c.Instance) + "-" + c.Name

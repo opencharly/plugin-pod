@@ -17,8 +17,8 @@ import (
 // was reconstructed VERBATIM in charly-core (service.go) behind HostBuild("pod-service") even
 // though every one of its dependencies is genuinely portable — spec.ResolvedInit is already an
 // sdk/spec alias (not core-only), ServiceCommandContext is a plain struct, buildkit.RenderTemplate
-// is sdk-portable, and containerRunning/containerImage/ResolveRuntime/ResolveBoxEngineForDeploy/
-// ExtractMetadata are all kit/deploykit calls a plugin already has. Only the FINAL
+// is sdk-portable, and containerRunning/containerImage/ResolveRuntime/the sdk selection
+// model/ExtractMetadata are all kit/deploykit calls a plugin already has. Only the FINAL
 // dispatchLifecycleTarget + LifecycleTarget.Shell step is a core Mechanism (the plugin loader +
 // provider registry) — that's the ONE thing host_build_pod_lifecycle_dispatch.go's
 // hostBuildPodLifecycle op="service" case still does (#55 W3 A10b unified the former dedicated
@@ -56,49 +56,54 @@ func initRenderManagementCommand(def *spec.ResolvedInit, operation, serviceName 
 	return buildkit.RenderTemplate("mgmt-"+operation, tmplStr, ctx)
 }
 
-// resolveServiceInit resolves the container, engine, and init system for service management.
-func resolveServiceInit(ctx context.Context, box, instance string) (engine, containerName string, initDef *spec.ResolvedInit, err error) {
+// resolveServiceInit resolves the container, engine selection, and init system for service
+// management. The engine comes from the ONE sdk selection model (selection.go), whose engine WORD
+// is what the container/image probes take (they resolve the binary themselves) and whose binary is
+// used only for the argv the host executes.
+func resolveServiceInit(ctx context.Context, box, instance string) (sel podSelection, containerName string, initDef *spec.ResolvedInit, err error) {
 	rt, err := kit.ResolveRuntime()
 	if err != nil {
-		return "", "", nil, err
+		return podSelection{}, "", nil, err
 	}
 	boxName := kit.ResolveBoxName(box)
-	runEngine := deploykit.ResolveBoxEngineForDeploy(ctx, boxName, instance, rt.RunEngine)
-	engine = kit.EngineBinary(runEngine)
+	sel, err = resolvePodSelectionFor(boxName, instance, rt)
+	if err != nil {
+		return podSelection{}, "", nil, err
+	}
 	containerName = kit.ContainerNameInstance(boxName, instance)
-	if !kit.ContainerRunning(engine, containerName) {
-		return "", "", nil, fmt.Errorf("container %s is not running", containerName)
+	if !kit.ContainerRunning(string(sel.Engine()), containerName) {
+		return podSelection{}, "", nil, fmt.Errorf("container %s is not running", containerName)
 	}
 
 	// Determine init system from image labels
-	imageRef := kit.ContainerImage(engine, containerName)
+	imageRef := kit.ContainerImage(string(sel.Engine()), containerName)
 	if imageRef == "" {
-		return "", "", nil, fmt.Errorf("cannot determine image for container %s", containerName)
+		return podSelection{}, "", nil, fmt.Errorf("cannot determine image for container %s", containerName)
 	}
-	meta, err := deploykit.ExtractMetadata(engine, imageRef)
+	meta, err := deploykit.ExtractMetadata(string(sel.Engine()), imageRef)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("cannot read image metadata: %w", err)
+		return podSelection{}, "", nil, fmt.Errorf("cannot read image metadata: %w", err)
 	}
 	if meta == nil || meta.Init == "" {
-		return "", "", nil, fmt.Errorf("no init system configured for container %s (rebuild image with the embedded init: vocabulary)", containerName)
+		return podSelection{}, "", nil, fmt.Errorf("no init system configured for container %s (rebuild image with the embedded init: vocabulary)", containerName)
 	}
 
 	// Load init config to get management commands
 	initDef, err = resolveInitDefFromMeta(meta)
 	if err != nil {
-		return "", "", nil, err
+		return podSelection{}, "", nil, err
 	}
 
-	return engine, containerName, initDef, nil
+	return sel, containerName, initDef, nil
 }
 
 // validateServiceName checks that a service name exists in the image's service list.
-func validateServiceName(engine, containerName, serviceName string) error {
-	imageRef := kit.ContainerImage(engine, containerName)
+func validateServiceName(engine spec.EngineName, containerName, serviceName string) error {
+	imageRef := kit.ContainerImage(string(engine), containerName)
 	if imageRef == "" {
 		return fmt.Errorf("cannot determine image for container %s", containerName)
 	}
-	meta, err := deploykit.ExtractMetadata(engine, imageRef)
+	meta, err := deploykit.ExtractMetadata(string(engine), imageRef)
 	if err != nil {
 		return fmt.Errorf("cannot read image metadata: %w", err)
 	}
@@ -115,12 +120,12 @@ func validateServiceName(engine, containerName, serviceName string) error {
 // <op> [svc]` argv the host will run over LifecycleTarget.Shell — the plugin-side twin of the
 // former core execInitCommand, minus the dispatch step itself.
 func buildServiceArgv(ctx context.Context, box, instance, operation, service string) ([]string, error) {
-	engine, containerName, initDef, err := resolveServiceInit(ctx, box, instance)
+	sel, containerName, initDef, err := resolveServiceInit(ctx, box, instance)
 	if err != nil {
 		return nil, err
 	}
 	if operation != "status" {
-		if err := validateServiceName(engine, containerName, service); err != nil {
+		if err := validateServiceName(sel.Engine(), containerName, service); err != nil {
 			return nil, err
 		}
 	}
@@ -128,5 +133,5 @@ func buildServiceArgv(ctx context.Context, box, instance, operation, service str
 	if err != nil {
 		return nil, err
 	}
-	return append([]string{engine, "exec", containerName, initDef.ManagementTool}, strings.Fields(rendered)...), nil
+	return append([]string{sel.binary(), "exec", containerName, initDef.ManagementTool}, strings.Fields(rendered)...), nil
 }

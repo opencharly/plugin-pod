@@ -32,16 +32,17 @@ import (
 // but transitively reaches DeployStateHost is placement-DEPENDENT: correct when compiled into the
 // SAME OS process as charly-core (today's default), silently wrong (empty/ignored, no error) the
 // moment it runs in a genuinely out-of-process plugin binary — exactly the class of bug the
-// project's host deploy-config loader + pod-config-box-engine seams already exist to prevent
-// for OTHER call sites; this port had simply not been checked against that same list yet. TWO
-// functions below needed rerouting through those seams instead of calling deploykit
-// directly (R3 — no new seam invented for either):
+// cycle-free loaderkit overlay reader exists to prevent for OTHER call sites; this port had
+// simply not been checked against that same list yet. TWO functions below needed rerouting
+// through it instead of calling deploykit directly (R3 — no new seam invented for either):
 //   - resolveSidecarNames: was calling deploykit.LoadDeployConfig() raw — now goes through the
 //     cycle-free loaderkit.LoadHostDeployConfigViaExecutor helper (retiring the former host
 //     deploy-config loader seam).
-//   - runPodRemove's engine resolution: deploykit.ResolveBoxEngineForDeploy transitively calls
-//     LoadDeployConfig too (via LoadDeployConfigForRead) — now goes through the EXISTING
-//     pod-config-box-engine seam (the SAME one host_build_pod_config_seams.go already serves).
+//   - runPodRemove's engine resolution: the ONE sdk selection model
+//     (resolvePodSelectionFor → deploykit.ResolvePodEngine + ResolveContainerdTarget) reads the
+//     per-host overlay through the cycle-free loaderkit helper, so the deploy-entry level is
+//     honoured out-of-process without ever reaching deploykit's DeployStateHost package var. The
+//     former hand-rolled lookup (and the retired divergent sdk engine-lookup path) are deleted.
 //
 // Every OTHER deploykit/kit call in this file was individually audited against the FULL
 // DeployStateHost (and sibling "*Host" seam — none other exist) call-graph and confirmed genuinely
@@ -173,8 +174,7 @@ func sidecarContainerNames(podBase string, sidecarNames []string) []string {
 // containerExists reports whether the engine still knows a container by that name. R3
 // consolidation (K-wave 2 cone R2 bank C): delegates to the shared kit.ContainerExists; the var
 // stays so the removal ordering can still be tested without a live engine. `engine` here is the
-// resolved binary path (kit.EngineBinary output — "podman"/"docker"), idempotent through
-// kit.ContainerExists's own EngineBinary resolve.
+// resolved engine's binary path, idempotent through kit.ContainerExists's own resolve.
 var containerExists = kit.ContainerExists
 
 // removeContainer force-removes one container. Package var for the same reason as above.
@@ -417,18 +417,15 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string)
 		return err
 	}
 
-	// Resolve per-image engine from the per-host deploy config PLUGIN-SIDE (loadPodDeployConfig —
-	// the cycle-free loaderkit read), replicating deploykit.ResolveBoxEngineForDeploy's lookup
-	// WITHOUT the DeployStateHost package-var dependency (a plugin calling the raw deploykit
-	// function would silently no-op out-of-process). #55 coneC-dsh — the pod-config-box-engine host
-	// seam is DELETED.
-	runEngine := rt.RunEngine
-	if dc, _ := loadPodDeployConfig(); dc != nil {
-		if entry, ok := dc.Lookup(boxName, instance); ok && entry.Engine != "" {
-			runEngine = string(entry.Engine)
-		}
+	// ONE selection model (sdk/deploykit): deploy entry > env > settings > built-in default, then
+	// the engine's capability facts. The former hand-rolled deploy-entry-else-runtime lookup and
+	// its silent unset-engine fallback are DELETED — a retired/unknown engine word is an error, not
+	// a quiet resolution to the default engine.
+	sel, err := resolvePodSelectionFor(boxName, instance, rt)
+	if err != nil {
+		return err
 	}
-	engine := kit.EngineBinary(runEngine)
+	engine := sel.binary()
 	containerName := kit.ContainerNameInstance(boxName, instance)
 
 	// Run pre_remove hooks (best-effort, before stopping)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/opencharly/sdk"
 	"github.com/opencharly/sdk/deploykit"
+	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/spec/container"
 	"github.com/opencharly/spec/spec"
 )
@@ -15,14 +16,11 @@ import (
 // completion). Mirrors candy/plugin-deploy-pod/lifecycle.go's podTunnelOp exactly (R3): both reach
 // the SAME compiled-in, placement-agnostic verb:tunnel provider over the SAME
 // {plugin_input:{method,config}} envelope.
-// The tunnel CONFIG itself is still resolved HOST-side, via the EXISTING pod-config-container-tunnel
-// seam (charly/host_build_pod_config_seams.go's hostBuildPodConfigContainerTunnel) — the SAME seam
-// candy/plugin-deploy-pod's resolvePodStartQuadlet/resolvePodStartDirect/resolvePodStopPlan already
-// call to populate PodLifecyclePlan.Tunnel for start/stop — because the resolution's true source,
-// TunnelConfigFromMetadata(*BoxMetadata), takes a charly-core-only type not portable into this
-// module (the running container's baked image ref + charly.yml overlay merge stay core Mechanisms).
-// No new seam was invented for this: both pieces (config-resolve seam, verb:tunnel provider) already
-// existed and were already load-bearing for pod start/stop before this leaf reused them for remove.
+// The tunnel CONFIG is resolved PLUGIN-SIDE (#55 coneC-dsh — the former
+// pod-config-container-tunnel host seam is DELETED): the running container's baked image ref, its
+// metadata and the charly.yml overlay merge are all plugin-reachable, and the engine that answers
+// the container/image probes comes from the ONE sdk selection model rather than a hand-picked
+// engine word.
 
 // resolveContainerTunnel resolves the running container's tunnel config PLUGIN-SIDE (#55 coneC-dsh
 // — the pod-config-container-tunnel host seam is DELETED). Reads the container's baked image ref
@@ -32,15 +30,25 @@ import (
 // host leg's own best-effort framing.
 func resolveContainerTunnel(box, instance string) *spec.TunnelConfig {
 	ctrName := spec.ContainerNameInstance(box, instance)
-	imageRef := container.ContainerImage("podman", ctrName)
-	if imageRef == "" {
-		return nil
-	}
-	meta, err := deploykit.ExtractMetadata("podman", imageRef)
-	if err != nil || meta == nil {
+	rt, err := kit.ResolveRuntime()
+	if err != nil {
 		return nil
 	}
 	dc, _ := loadPodDeployConfig()
+	sel, err := resolvePodSelectionFromConfig(dc, box, instance, rt)
+	if err != nil {
+		return nil
+	}
+	// The container/image probes take the engine WORD (each resolves its own binary through the
+	// engine capability table); the former hard-coded engine word selected one engine by hand.
+	imageRef := container.ContainerImage(string(sel.Engine()), ctrName)
+	if imageRef == "" {
+		return nil
+	}
+	meta, err := deploykit.ExtractMetadata(string(sel.Engine()), imageRef)
+	if err != nil || meta == nil {
+		return nil
+	}
 	deploykit.MergeDeployOntoMetadata(meta, dc, box, instance)
 	if meta.Tunnel == nil {
 		return nil
