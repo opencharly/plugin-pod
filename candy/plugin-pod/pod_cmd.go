@@ -182,12 +182,25 @@ func (c *RemoveCmd) Run() error {
 		_ = hostPodLifecycle("remove", boxName, c.Instance, nil, spec.PodRemovePayload{})
 	}()
 
-	if tc := resolveContainerTunnel(c.Box, c.Instance); tc != nil {
+	rt, err := kit.ResolveRuntime()
+	if err != nil {
+		return err
+	}
+	// ONE selection for the whole remove: the tunnel read and the teardown share it, so the tunnel
+	// path cannot re-resolve or swallow an error. An unreadable overlay degrades visibly (orphan
+	// teardown must still run); a readable overlay with a retired engine word is a hard error
+	// BEFORE anything is torn down.
+	sel, err := resolveTeardownSelection(boxName, c.Instance, rt)
+	if err != nil {
+		return err
+	}
+
+	if tc := resolveContainerTunnel(c.Box, c.Instance, sel); tc != nil {
 		if err := podTunnelStop(tc); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: tunnel teardown failed: %v\n", err)
 		}
 	}
-	return runPodRemove(c.Box, c.Instance, c.Purge, c.KeepDeploy, c.Env)
+	return runPodRemove(c.Box, c.Instance, c.Purge, c.KeepDeploy, c.Env, rt, sel)
 }
 
 // ShellCmd starts a bash shell in a container image — the `charly shell` grammar. Registry-bound

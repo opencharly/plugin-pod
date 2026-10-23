@@ -409,24 +409,14 @@ func removeUnitFiles(keepDeploy bool, paths []string, w io.Writer) error {
 // runPodRemove is the full `charly remove` orchestration, ported verbatim from the former
 // charly/commands.go podRemoveCmd.Run() (minus tunnel-stop, already handled by the caller, and
 // minus the arbiter-release bracket, which the caller defers to the host seam).
-func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string) error {
+func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string, rt *kit.ResolvedRuntime, sel podSelection) error {
 	boxName := kit.ResolveBoxName(box)
 
-	rt, err := kit.ResolveRuntime()
-	if err != nil {
-		return err
-	}
-
-	// ONE selection model (sdk/deploykit): deploy entry > env > settings > built-in default, then
-	// the engine's capability facts. The former hand-rolled deploy-entry-else-runtime lookup and
-	// its silent unset-engine fallback are DELETED — a retired/unknown engine word is an error, not
-	// a quiet resolution to the default engine. resolveTeardownSelection keeps ONLY the documented
-	// best-effort case (an unreadable overlay must not block orphan teardown) and warns when it
-	// degrades; a readable overlay is resolved strictly.
-	sel, err := resolveTeardownSelection(boxName, instance, rt)
-	if err != nil {
-		return err
-	}
+	// The engine selection is resolved ONCE by the caller (`charly remove`), which uses the same
+	// selection for the tunnel read: there is no second resolution and no error for this function
+	// to swallow. resolveTeardownSelection keeps ONLY the documented best-effort case (an
+	// unreadable overlay must not block orphan teardown) and warns when it degrades; a readable
+	// overlay is resolved strictly.
 	engine := sel.binary()
 	containerName := kit.ContainerNameInstance(boxName, instance)
 

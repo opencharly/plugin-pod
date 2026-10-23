@@ -50,10 +50,22 @@ func TestResolvePodSelectionRejectsRetiredEngineWord(t *testing.T) {
 // capability defaults / rt alone.
 func TestDeploySelectionHonoursEntry(t *testing.T) {
 	wantEngine := spec.EngineName(spec.EngineNames[0])
+	// Choose a rootful mode the contract defines AND that resolves to a truthy target, so the
+	// assertion does not depend on a mode's position in the vocabulary.
+	var rootfulMode spec.RootfulMode
+	for _, mode := range spec.RootfulModes {
+		if got, err := resolvePodSelection(deploykit.Selection{Rootful: spec.RootfulMode(mode)}, nil); err == nil && got.Target.Rootful {
+			rootfulMode = spec.RootfulMode(mode)
+			break
+		}
+	}
+	if rootfulMode == "" {
+		t.Fatal("no mode in spec.RootfulModes resolves to a truthy target; the fixture cannot be built")
+	}
 	dc := &deploykit.DeployConfig{Deploy: map[string]deploykit.DeployNode{
 		"check-pod-selection": {
 			Engine:    wantEngine,
-			Rootful:   spec.RootfulMode(spec.RootfulModes[len(spec.RootfulModes)-1]),
+			Rootful:   rootfulMode,
 			Namespace: "selection-test-ns",
 		},
 	}}
@@ -65,7 +77,7 @@ func TestDeploySelectionHonoursEntry(t *testing.T) {
 		t.Errorf("engine = %q, want the deploy entry's %q", sel.Target.Engine, wantEngine)
 	}
 	if !sel.Target.Rootful {
-		t.Errorf("target.Rootful = false, want true from the deploy entry's rootful: %q", spec.RootfulModes[len(spec.RootfulModes)-1])
+		t.Errorf("target.Rootful = false, want true from the deploy entry's rootful: %q", rootfulMode)
 	}
 	if sel.Target.Namespace != "selection-test-ns" {
 		t.Errorf("target.Namespace = %q, want the deploy entry's selection-test-ns", sel.Target.Namespace)
@@ -76,7 +88,7 @@ func TestDeploySelectionHonoursEntry(t *testing.T) {
 // deploy entry, rt.RunEngine answers. The pre-change tree also honoured this level, so the control
 // for THIS test is that the API does not exist there — the behaviour must not be lost in the move.
 func TestResolvePodSelectionFallsBackToRuntime(t *testing.T) {
-	wantEngine := spec.EngineNames[len(spec.EngineNames)-1]
+	wantEngine := spec.EngineNames[0] // the provider vocabulary carries no `auto`, so [0] is a real engine
 	sel, err := resolvePodSelection(deploykit.Selection{}, runtimeWithEngine(t, wantEngine))
 	if err != nil {
 		t.Fatalf("resolvePodSelection: %v", err)
@@ -224,6 +236,35 @@ exit 0
 	// every probe call site must pass the WORD. This is the round-2 control.
 	if got := container.ContainerImage(kit.EngineBinary("nerdctl"), "probe-ctr"); got != "WRONG-ENGINE" {
 		t.Errorf("the binary form no longer discriminates: got %q, want the fake podman answer", got)
+	}
+}
+
+// TestResolveContainerTunnelUsesThePassedSelection pins the tunnel read's contract: it uses the
+// CALLER's resolved selection (the teardown selection) for its container/image probes and has no
+// selection error of its own to swallow. A fake nerdctl records that it ran for the passed
+// containerd word; a fake podman that would answer differently is never invoked.
+func TestResolveContainerTunnelUsesThePassedSelection(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "nerdctl-called")
+	script := "#!/bin/sh\ntouch " + marker + "\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "nerdctl"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake nerdctl: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "podman"), []byte("#!/bin/sh\ntouch "+marker+"-podman\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write fake podman: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	sel := podSelection{Target: deploykit.ContainerdTarget{Engine: spec.EngineName("containerd")}}
+	if got := resolveContainerTunnel("probe", "", sel); got != nil {
+		t.Fatalf("resolveContainerTunnel = %+v, want nil (the fake probe returns no image ref)", got)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the tunnel read did not probe through the passed selection's engine: %v", err)
+	}
+	if _, err := os.Stat(marker + "-podman"); err == nil {
+		t.Fatal("the tunnel read probed through podman; it must use the passed containerd selection")
 	}
 }
 

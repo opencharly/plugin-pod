@@ -7,7 +7,6 @@ import (
 
 	"github.com/opencharly/sdk"
 	"github.com/opencharly/sdk/deploykit"
-	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/spec/container"
 	"github.com/opencharly/spec/spec"
 )
@@ -23,22 +22,14 @@ import (
 // engine word.
 
 // resolveContainerTunnel resolves the running container's tunnel config PLUGIN-SIDE (#55 coneC-dsh
-// — the pod-config-container-tunnel host seam is DELETED). Reads the container's baked image ref
-// (container.ContainerImage — spec/container, plugin-reachable), extracts its metadata, merges the
-// per-host overlay (loadPodDeployConfig — the cycle-free loaderkit read), and resolves the tunnel
-// config. nil if none configured or on any resolution error — best-effort, matching the former
-// host leg's own best-effort framing.
-func resolveContainerTunnel(box, instance string) *spec.TunnelConfig {
+// — the pod-config-container-tunnel host seam is DELETED). The engine selection is the CALLER's
+// (the `charly remove` teardown selection), so this read can never re-resolve — or silently
+// swallow — a selection error. It only reads, and returns nil when there is no tunnel to stop.
+func resolveContainerTunnel(box, instance string, sel podSelection) *spec.TunnelConfig {
 	ctrName := spec.ContainerNameInstance(box, instance)
-	rt, err := kit.ResolveRuntime()
-	if err != nil {
-		return nil
-	}
+	// The overlay merge is best-effort: a tunnel config is an enhancement to the teardown, and an
+	// unreadable overlay means "no per-host tunnel overrides", never a missing teardown.
 	dc, _ := loadPodDeployConfig()
-	sel, err := resolvePodSelectionFromConfig(dc, box, instance, rt)
-	if err != nil {
-		return nil
-	}
 	// The probes take the resolved engine WORD: each resolves the binary through the capability
 	// table itself, so handing them a BINARY would make that resolve fall back to the default
 	// engine (the control in TestProbeBoundaryTakesTheEngineWord logs the exact values).
