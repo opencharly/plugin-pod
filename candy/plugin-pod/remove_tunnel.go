@@ -39,8 +39,9 @@ func resolveContainerTunnel(box, instance string) *spec.TunnelConfig {
 	if err != nil {
 		return nil
 	}
-	// The container/image probes take the engine WORD (each resolves its own binary through the
-	// engine capability table); the former hard-coded engine word selected one engine by hand.
+	// The probes take the resolved engine WORD: each resolves the binary through the capability
+	// table itself, and handing them a BINARY would make that resolve fall back to podman for
+	// containerd (kit.EngineBinary("nerdctl") == "podman").
 	imageRef := container.ContainerImage(string(sel.Engine()), ctrName)
 	if imageRef == "" {
 		return nil

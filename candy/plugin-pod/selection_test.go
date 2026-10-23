@@ -1,6 +1,7 @@
 package pod
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -57,8 +58,8 @@ func TestDeploySelectionHonoursEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolvePodSelectionFromConfig: %v", err)
 	}
-	if sel.Engine() != wantEngine {
-		t.Errorf("engine = %q, want the deploy entry's %q", sel.Engine(), wantEngine)
+	if sel.Target.Engine != wantEngine {
+		t.Errorf("engine = %q, want the deploy entry's %q", sel.Target.Engine, wantEngine)
 	}
 	if !sel.Target.Rootful {
 		t.Errorf("target.Rootful = false, want true from the deploy entry's rootful: %q", spec.RootfulModes[len(spec.RootfulModes)-1])
@@ -77,8 +78,8 @@ func TestResolvePodSelectionFallsBackToRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolvePodSelection: %v", err)
 	}
-	if string(sel.Engine()) != wantEngine {
-		t.Errorf("engine = %q, want the runtime fold %q", sel.Engine(), wantEngine)
+	if string(sel.Target.Engine) != wantEngine {
+		t.Errorf("engine = %q, want the runtime fold %q", sel.Target.Engine, wantEngine)
 	}
 }
 
@@ -89,6 +90,64 @@ func TestResolvePodSelectionRejectsBadRootfulWord(t *testing.T) {
 	_, err := resolvePodSelection(deploykit.Selection{Rootful: spec.RootfulMode("bogus-rootful")}, nil)
 	if err == nil {
 		t.Fatal("a rootful word outside spec.RootfulModes resolved without an error")
+	}
+}
+
+// TestResolvePodSelectionForHandlesNilAndUnreadableOverlay pins the two overlay states the
+// selection must survive: an ABSENT overlay (nil config, nil error) contributes no deploy level and
+// resolves from the runtime fold, and an UNREADABLE overlay is an explicit error — never a silent
+// fallback to the runtime engine (the silent-fallback class this migration removes).
+func TestResolvePodSelectionForHandlesNilAndUnreadableOverlay(t *testing.T) {
+	wantEngine := spec.EngineNames[0]
+	orig := loadPodDeployConfig
+	t.Cleanup(func() { loadPodDeployConfig = orig })
+
+	// Absent overlay: nil config, no error -> the runtime fold answers.
+	loadPodDeployConfig = func() (*deploykit.DeployConfig, error) { return nil, nil }
+	sel, err := resolvePodSelectionFor("probe", "", runtimeWithEngine(t, wantEngine))
+	if err != nil {
+		t.Fatalf("nil config resolved with an error: %v", err)
+	}
+	if string(sel.Target.Engine) != wantEngine {
+		t.Errorf("engine = %q, want the runtime fold %q", sel.Target.Engine, wantEngine)
+	}
+
+	// Unreadable overlay: an error, not a silent runtime fallback.
+	loadPodDeployConfig = func() (*deploykit.DeployConfig, error) { return nil, errors.New("unreadable overlay") }
+	if _, err := resolvePodSelectionFor("probe", "", runtimeWithEngine(t, wantEngine)); err == nil {
+		t.Fatal("an unreadable overlay resolved silently; the loader error was discarded")
+	} else if !strings.Contains(err.Error(), "unreadable overlay") {
+		t.Errorf("error %q does not wrap the loader error", err)
+	}
+}
+
+// TestProbeBoundaryTakesTheEngineWord pins the form every probe receives and WHY. The probes
+// resolve the binary through the capability table themselves, so the engine WORD is correct
+// (containerd -> nerdctl), while handing them the BINARY would make their own resolve fall back to
+// the default engine (kit.EngineBinary("nerdctl") == "podman"). A later "pass the binary" cleanup
+// would silently move containerd reads onto podman; this fails first.
+func TestProbeBoundaryTakesTheEngineWord(t *testing.T) {
+	for _, engine := range spec.EngineNames {
+		want, ok := spec.EngineBinaries[engine]
+		if !ok {
+			t.Fatalf("spec.EngineBinaries has no row for %q", engine)
+		}
+		sel := podSelection{Target: deploykit.ContainerdTarget{Engine: spec.EngineName(engine)}}
+		if got := sel.binary(); got != want {
+			t.Errorf("binary(%q) = %q, want the capability fact %q", engine, got, want)
+		}
+		// What a probe does with the value it is handed: EngineBinary(value).
+		if got := kit.EngineBinary(string(sel.Engine())); got != want {
+			t.Errorf("a probe handed the WORD %q resolves %q, want %q", engine, got, want)
+		}
+		if want != engine {
+			// The discriminating case: a probe handed the BINARY instead is rewritten away from it.
+			if got := kit.EngineBinary(want); got == want {
+				t.Errorf("kit.EngineBinary(%q) = %q; the fixture no longer proves a BINARY would be rewritten", want, got)
+			} else {
+				t.Logf("control: a probe handed the BINARY %q would invoke %q — the word is required", want, got)
+			}
+		}
 	}
 }
 

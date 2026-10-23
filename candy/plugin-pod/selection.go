@@ -16,6 +16,8 @@ package pod
 // (`charly deploy add`).
 
 import (
+	"fmt"
+
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/spec/spec"
@@ -29,16 +31,26 @@ type podSelection struct {
 	Target deploykit.ContainerdTarget
 }
 
-// Engine is the resolved container-engine word (never `auto`: the resolver resolves it).
+// Engine is the resolved container-engine WORD (never `auto`: the resolver resolves it). The
+// container/image probes take the WORD, because each resolves the binary through the capability
+// table itself: `kit.EngineBinary("containerd")` is `nerdctl`, while handing them the BINARY
+// (`"nerdctl"`) makes their own resolve fall back to the default engine (`"podman"`). Pass the
+// word to a probe; pass binary() only to an argv.
 func (s podSelection) Engine() spec.EngineName { return s.Target.Engine }
 
-// binary is the engine's CLI binary. It is a capability fact (containerd is driven through
-// nerdctl), never an engine-word spelling.
+// binary is the engine's CLI binary for argv construction. It is a capability fact (containerd is
+// driven through nerdctl), never an engine-word spelling.
 func (s podSelection) binary() string { return kit.EngineBinary(string(s.Target.Engine)) }
 
 // deploySelection maps the deploy entity level of the precedence chain onto the resolver's
-// Selection. An absent entry contributes nothing, so every lower level is consulted.
+// Selection. A nil config (no readable overlay) contributes nothing, exactly like an absent entry,
+// so every lower level is consulted. The explicit guard is load-bearing even though
+// spec.DeployConfig.Lookup is nil-receiver-safe: it makes the absent-overlay case visible here
+// instead of depending on a nil-receiver method a future refactor could change.
 func deploySelection(dc *deploykit.DeployConfig, box, instance string) deploykit.Selection {
+	if dc == nil {
+		return deploykit.Selection{}
+	}
 	entry, ok := dc.Lookup(box, instance)
 	if !ok {
 		return deploykit.Selection{}
@@ -72,9 +84,14 @@ func resolvePodSelectionFromConfig(dc *deploykit.DeployConfig, box, instance str
 	return resolvePodSelection(deploySelection(dc, box, instance), rt)
 }
 
-// resolvePodSelectionFor loads the per-host overlay once and resolves against it. Callers that
-// already hold the config use resolvePodSelectionFromConfig instead.
+// resolvePodSelectionFor loads the per-host overlay once and resolves against it. An UNREADABLE
+// overlay is an ERROR here: only an absent entry may fall through to the env/settings level, so a
+// broken config cannot silently resolve a deploy to the wrong engine. Callers with a documented
+// best-effort contract (teardown) handle the error explicitly instead of discarding it.
 func resolvePodSelectionFor(box, instance string, rt *kit.ResolvedRuntime) (podSelection, error) {
-	dc, _ := loadPodDeployConfig()
+	dc, err := loadPodDeployConfig()
+	if err != nil {
+		return podSelection{}, fmt.Errorf("load the deploy overlay for %q: %w", spec.DeployKey(box, instance), err)
+	}
 	return resolvePodSelectionFromConfig(dc, box, instance, rt)
 }
