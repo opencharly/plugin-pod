@@ -48,8 +48,13 @@ charly remove openclaw -e CLEANUP_MODE=full
 1. Runs `pre_remove` lifecycle hooks (if defined in image labels)
 2. Stops the container if still running
 3. Removes the quadlet file (quadlet mode) or container (direct mode)
-4. Removes the charly.yml entry (unless `--keep-deploy`)
-5. With `--purge`: removes named volumes (`charly-<image>-<name>`)
+4. Removes the podman secrets the deploy provisioned (`charly-<image>-*`, required, accepted and
+   auto-generated ones) — unless this instance is NOT the last deployment of that image, because
+   podman secret names are box-scoped and a sibling instance still resolves them. The credential
+   STORE entry is untouched: it can serve other deployments, so teardown never erases a
+   credential (`opencharly/plugin-deploy-pod#64`, `opencharly/pod-openwebui#19`)
+5. Removes the charly.yml entry (unless `--keep-deploy`)
+6. With `--purge`: removes named volumes (`charly-<image>-<name>`)
 
 ## Lifecycle Hooks
 
@@ -64,7 +69,7 @@ charly remove selkies-desktop -i 192.241.92.221          # Remove instance
 charly remove selkies-desktop -i 192.241.92.221 --purge  # Also purge volumes
 ```
 
-Instance removal automatically cleans the instance's `env_provide` and `mcp_provide` from `charly.yml` provides section. Other instances of the same base image are unaffected.
+Instance removal automatically cleans the instance's `env_provide` and `mcp_provide` from `charly.yml` provides section. Other instances of the same base image are unaffected — including their podman secrets: the engine-side secret cleanup only fires when the remove leaves no other deployment of the same image behind.
 
 ## Cross-References
 

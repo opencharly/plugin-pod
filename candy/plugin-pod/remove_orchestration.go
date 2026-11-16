@@ -198,6 +198,67 @@ func ensureContainersRemoved(engine string, names []string) {
 	}
 }
 
+// removeProvisionedSecrets removes the engine-side podman secrets a deploy provisioned
+// (charly-<box>-*: required, accepted and auto-generated ones, sidecars included) once the
+// deploy is gone. Provisioning has had a verb since the secrets seam landed; teardown had
+// none, so every removed deploy left its secret behind — indistinguishable from a live one,
+// and reused ("kept (already provisioned)") by the next run of the same bed, which can mask a
+// provisioning defect by carrying a stale value across runs
+// (opencharly/plugin-deploy-pod#64).
+//
+// The credential STORE entry is deliberately NOT touched: it is host-global and may serve
+// other deployments (opencharly/pod-openwebui#19), so tearing a deploy down must not erase a
+// credential another deploy resolves. What dies here is this deploy's own ENGINE object.
+//
+// Podman secret names are box-scoped, not instance-scoped ("charly-<box>-<slug>"), so two
+// instances of one box SHARE them. Removing one instance would break the other, so the
+// cleanup refuses (and says so) while another deployment of the same box is still present.
+func removeProvisionedSecrets(engine, boxName, instance string) {
+	siblings, listable := otherDeployContainers(engine, boxName, instance)
+	if !listable {
+		fmt.Fprintf(os.Stderr, "Warning: cannot enumerate %s containers; leaving the podman secrets of %s untouched\n", engine, boxName)
+		return
+	}
+	if len(siblings) > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: %d other deployment(s) of %s still use its podman secrets (%s); leaving them\n",
+			len(siblings), boxName, strings.Join(siblings, ", "))
+		return
+	}
+	names := listProvisionedSecretNames(engine, boxName)
+	if len(names) == 0 {
+		return
+	}
+	secrets := make([]deploykit.CollectedSecret, 0, len(names))
+	for _, n := range names {
+		secrets = append(secrets, deploykit.CollectedSecret{Name: n})
+	}
+	removePodmanSecrets(engine, secrets)
+	fmt.Fprintf(os.Stderr, "Removed %d provisioned podman secret(s) for %s\n", len(names), boxName)
+}
+
+// otherDeployContainers returns the charly containers of the SAME box that belong to a
+// different instance and are still present in the engine — the guard that keeps the podman
+// secret cleanup from breaking a sibling deployment (see removeProvisionedSecrets). The second
+// result is false when the engine cannot be enumerated: the caller must then stay conservative,
+// because a sibling may exist and a shared secret is not recoverable.
+func otherDeployContainers(engine, boxName, instance string) ([]string, bool) {
+	all, err := engineContainerNames(engine)
+	if err != nil {
+		return nil, false
+	}
+	own := kit.ContainerNameInstance(boxName, instance)
+	prefix := "charly-" + boxName + "-"
+	var siblings []string
+	for _, n := range all {
+		if n == "" || n == own || !strings.HasPrefix(n, prefix) {
+			continue
+		}
+		siblings = append(siblings, n)
+	}
+	sort.Strings(siblings)
+	return siblings, true
+}
+
 func purgeDeployArtifacts(engine, boxName, instance string) {
 	removeVolumes(engine, boxName, instance)
 	// Pass the executor-loaded config explicitly: the bare deploykit.LoadDeployConfig
@@ -409,6 +470,26 @@ func removeUnitFiles(keepDeploy bool, paths []string, w io.Writer) error {
 // runPodRemove is the full `charly remove` orchestration, ported verbatim from the former
 // charly/commands.go podRemoveCmd.Run() (minus tunnel-stop, already handled by the caller, and
 // minus the arbiter-release bracket, which the caller defers to the host seam).
+// Injected so the teardown cleanup is unit-testable without an engine, the same seam
+// discipline containerExists/removeContainer use for the container reap.
+var (
+	listProvisionedSecretNames = deploykit.ListProvisionedSecretNames
+	removePodmanSecrets        = deploykit.RemovePodmanSecrets
+	engineContainerNames       = func(engine string) ([]string, error) {
+		out, err := exec.Command(engine, "ps", "-a", "--format", "{{.Names}}").Output()
+		if err != nil {
+			return nil, err
+		}
+		var names []string
+		for _, n := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if n != "" {
+				names = append(names, n)
+			}
+		}
+		return names, nil
+	}
+)
+
 func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string, rt *kit.ResolvedRuntime, sel podSelection) error {
 	boxName := kit.ResolveBoxName(box)
 
@@ -520,6 +601,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string,
 			purgeDeployArtifacts(engine, boxName, instance)
 		}
 		if !keepDeploy {
+			removeProvisionedSecrets(engine, boxName, instance)
 			cleanDeployEntryAndReport(cmdCtx, boxName, instance, cleanDeployEntry, os.Stderr)
 		}
 		return nil
@@ -540,6 +622,7 @@ func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string,
 		purgeDeployArtifacts(engine, boxName, instance)
 	}
 	if !keepDeploy {
+		removeProvisionedSecrets(engine, boxName, instance)
 		cleanDeployEntryAndReport(cmdCtx, boxName, instance, cleanDeployEntry, os.Stderr)
 	}
 	return nil
