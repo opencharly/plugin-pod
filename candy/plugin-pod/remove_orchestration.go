@@ -211,12 +211,12 @@ func ensureContainersRemoved(engine string, names []string) {
 // credential another deploy resolves. What dies here is this deploy's own ENGINE object.
 //
 // Podman secret names are box-scoped, not instance-scoped ("charly-<box>-<slug>"), so two
-// instances of one box SHARE them. Removing one instance would break the other, so the
-// cleanup refuses (and says so) while another deployment of the same box is still present.
+// deployments of one box SHARE them. Removing one would break the other, so the cleanup
+// refuses (and says so) while another deployment of the same box is still configured.
 func removeProvisionedSecrets(engine, boxName, instance string) {
-	siblings, listable := otherDeployContainers(engine, boxName, instance)
-	if !listable {
-		fmt.Fprintf(os.Stderr, "Warning: cannot enumerate %s containers; leaving the podman secrets of %s untouched\n", engine, boxName)
+	siblings, readable := siblingDeployments(boxName, instance)
+	if !readable {
+		fmt.Fprintf(os.Stderr, "Warning: cannot read the deploy config; leaving the podman secrets of %s untouched\n", boxName)
 		return
 	}
 	if len(siblings) > 0 {
@@ -236,27 +236,33 @@ func removeProvisionedSecrets(engine, boxName, instance string) {
 	fmt.Fprintf(os.Stderr, "Removed %d provisioned podman secret(s) for %s\n", len(names), boxName)
 }
 
-// otherDeployContainers returns the charly containers of the SAME box that belong to a
-// different instance and are still present in the engine — the guard that keeps the podman
-// secret cleanup from breaking a sibling deployment (see removeProvisionedSecrets). The second
-// result is false when the engine cannot be enumerated: the caller must then stay conservative,
-// because a sibling may exist and a shared secret is not recoverable.
-func otherDeployContainers(engine, boxName, instance string) ([]string, bool) {
-	all, err := engineContainerNames(engine)
-	if err != nil {
+// siblingDeployments returns the charly.yml keys of the OTHER deployments of the same box,
+// read from the host deploy config — the exact source. Container names cannot answer this:
+// the default instance's container is "charly-<box>" (no trailing dash), a named instance's is
+// "charly-<box>-<instance>", and a SIDECAR of this very deploy is also "charly-<box>-<sidecar>",
+// so any prefix scan either misses the default instance or mistakes our own sidecars for a
+// sibling (measured: the first version of this guard did both — opencharly/plugin-pod#28).
+// The second result is false when the config cannot be read; the caller must then stay
+// conservative, because a shared podman secret is not recoverable.
+func siblingDeployments(boxName, instance string) ([]string, bool) {
+	dc, err := loadPodDeployConfig()
+	if err != nil || dc == nil {
 		return nil, false
 	}
-	own := kit.ContainerNameInstance(boxName, instance)
-	prefix := "charly-" + boxName + "-"
-	var siblings []string
-	for _, n := range all {
-		if n == "" || n == own || !strings.HasPrefix(n, prefix) {
+	var others []string
+	for key := range dc.Deploy {
+		if key == boxName {
+			if instance != "" {
+				others = append(others, key)
+			}
 			continue
 		}
-		siblings = append(siblings, n)
+		if rest, ok := strings.CutPrefix(key, boxName+"/"); ok && rest != instance {
+			others = append(others, key)
+		}
 	}
-	sort.Strings(siblings)
-	return siblings, true
+	sort.Strings(others)
+	return others, true
 }
 
 func purgeDeployArtifacts(engine, boxName, instance string) {
@@ -475,19 +481,6 @@ func removeUnitFiles(keepDeploy bool, paths []string, w io.Writer) error {
 var (
 	listProvisionedSecretNames = deploykit.ListProvisionedSecretNames
 	removePodmanSecrets        = deploykit.RemovePodmanSecrets
-	engineContainerNames       = func(engine string) ([]string, error) {
-		out, err := exec.Command(engine, "ps", "-a", "--format", "{{.Names}}").Output()
-		if err != nil {
-			return nil, err
-		}
-		var names []string
-		for _, n := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if n != "" {
-				names = append(names, n)
-			}
-		}
-		return names, nil
-	}
 )
 
 func runPodRemove(box, instance string, purge, keepDeploy bool, cliEnv []string, rt *kit.ResolvedRuntime, sel podSelection) error {

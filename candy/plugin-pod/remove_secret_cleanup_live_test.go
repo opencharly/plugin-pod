@@ -21,6 +21,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/opencharly/sdk/deploykit"
 )
 
 func TestLiveRemoveProvisionedSecrets(t *testing.T) {
@@ -34,6 +36,17 @@ func TestLiveRemoveProvisionedSecrets(t *testing.T) {
 	box := os.Getenv("CHARLY_LIVE_BOX")
 	if box == "" {
 		t.Skip("CHARLY_LIVE_BOX not set: name the box whose engine secrets this run may delete")
+	}
+
+	// The host deploy config is not readable from a bare `go test` (it is loaded over the plugin's
+	// reverse channel), so this live proof pins the CONFIG SEAM to "this is the last deployment"
+	// and exercises everything else for real: the engine listing, the delete, and the re-check.
+	// The config-driven sibling decision itself is pinned by remove_secret_cleanup_test.go and by
+	// the check-pod bed, which drives the whole orchestration with a real config.
+	origCfg := loadPodDeployConfig
+	t.Cleanup(func() { loadPodDeployConfig = origCfg })
+	loadPodDeployConfig = func() (*deploykit.DeployConfig, error) {
+		return &deploykit.DeployConfig{Deploy: map[string]deploykit.DeployNode{box: {}}}, nil
 	}
 
 	before := listProvisionedSecretNames(engine, box)
@@ -59,3 +72,4 @@ func TestLiveRemoveProvisionedSecrets(t *testing.T) {
 	}
 	t.Logf("removed %d provisioned secret(s) and the engine lists none of them any more", len(before))
 }
+

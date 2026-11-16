@@ -49,10 +49,12 @@ charly remove openclaw -e CLEANUP_MODE=full
 2. Stops the container if still running
 3. Removes the quadlet file (quadlet mode) or container (direct mode)
 4. Removes the podman secrets the deploy provisioned (`charly-<image>-*`, required, accepted and
-   auto-generated ones) — unless this instance is NOT the last deployment of that image, because
-   podman secret names are box-scoped and a sibling instance still resolves them. The credential
-   STORE entry is untouched: it can serve other deployments, so teardown never erases a
-   credential (`opencharly/plugin-deploy-pod#64`, `opencharly/pod-openwebui#19`)
+   auto-generated ones) — unless another deployment of the SAME image is still in `charly.yml`,
+   because podman secret names are image-scoped (`charly-<image>-<slug>`) and that deployment still
+   resolves them. The question is answered from the deploy ENTRIES, never from container names (a
+   sidecar's container is `charly-<image>-<sidecar>` and the default instance's is `charly-<image>`).
+   The credential STORE entry is untouched: it can serve other deployments, so teardown never
+   erases a credential (`opencharly/plugin-deploy-pod#64`, `opencharly/pod-openwebui#19`)
 5. Removes the charly.yml entry (unless `--keep-deploy`)
 6. With `--purge`: removes named volumes (`charly-<image>-<name>`)
 
