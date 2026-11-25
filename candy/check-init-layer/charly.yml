@@ -13,6 +13,9 @@ check-init-layer:
               content: |
                   #!/bin/sh
                   # Runs to completion: the pod's health must not depend on this process staying alive.
+                  # It takes a couple of seconds, as a real migration does — supervisord treats a
+                  # process that exits inside its start window as failed.
+                  sleep 2
                   echo "check-init ran"
                   exit 0
               mode: "0755"
@@ -27,7 +30,7 @@ check-init-layer:
                 - build
         service:
             - name: check-init
-              exec: /bin/sh -c 'sleep 2'
+              exec: /usr/local/bin/check-init-once
               type: oneshot
               restart: no
               priority: 15

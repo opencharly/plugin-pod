@@ -16,3 +16,12 @@ check-service-status:
             - '@github.com/opencharly/layer-check-base-layer:v2026.271.2234'
             - '@github.com/opencharly/layer-check-stack-layer:v2026.271.2308'
             - check-init-layer
+        plan:
+            - check: the one-shot service's body is installed and executable at build
+              id: check-service-status-init-installed
+              exit_status: 0
+              command:
+                command: "test -x /usr/local/bin/check-init-once"
+                in_container: true
+              context:
+                - build
