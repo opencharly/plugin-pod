@@ -60,41 +60,41 @@ func initRenderManagementCommand(def *spec.ResolvedInit, operation, serviceName 
 // management. The engine comes from the ONE sdk selection model (selection.go), whose engine WORD
 // is what the container/image probes take (they resolve the binary themselves) and whose binary is
 // used only for the argv the host executes.
-func resolveServiceInit(ctx context.Context, box, instance string) (sel podSelection, containerName string, initDef *spec.ResolvedInit, err error) {
+func resolveServiceInit(ctx context.Context, box, instance string) (sel podSelection, containerName string, initDef *spec.ResolvedInit, meta *spec.BoxMetadata, err error) {
 	rt, err := kit.ResolveRuntime()
 	if err != nil {
-		return podSelection{}, "", nil, err
+		return podSelection{}, "", nil, nil, err
 	}
 	boxName := kit.ResolveBoxName(box)
 	sel, err = resolvePodSelectionFor(boxName, instance, rt)
 	if err != nil {
-		return podSelection{}, "", nil, err
+		return podSelection{}, "", nil, nil, err
 	}
 	containerName = kit.ContainerNameInstance(boxName, instance)
 	if !kit.ContainerRunning(string(sel.Engine()), containerName) {
-		return podSelection{}, "", nil, fmt.Errorf("container %s is not running", containerName)
+		return podSelection{}, "", nil, nil, fmt.Errorf("container %s is not running", containerName)
 	}
 
 	// Determine init system from image labels
 	imageRef := kit.ContainerImage(string(sel.Engine()), containerName)
 	if imageRef == "" {
-		return podSelection{}, "", nil, fmt.Errorf("cannot determine image for container %s", containerName)
+		return podSelection{}, "", nil, nil, fmt.Errorf("cannot determine image for container %s", containerName)
 	}
-	meta, err := deploykit.ExtractMetadata(string(sel.Engine()), imageRef)
+	meta, err = deploykit.ExtractMetadata(string(sel.Engine()), imageRef)
 	if err != nil {
-		return podSelection{}, "", nil, fmt.Errorf("cannot read image metadata: %w", err)
+		return podSelection{}, "", nil, nil, fmt.Errorf("cannot read image metadata: %w", err)
 	}
 	if meta == nil || meta.Init == "" {
-		return podSelection{}, "", nil, fmt.Errorf("no init system configured for container %s (rebuild image with the embedded init: vocabulary)", containerName)
+		return podSelection{}, "", nil, nil, fmt.Errorf("no init system configured for container %s (rebuild image with the embedded init: vocabulary)", containerName)
 	}
 
 	// Load init config to get management commands
 	initDef, err = resolveInitDefFromMeta(meta)
 	if err != nil {
-		return podSelection{}, "", nil, err
+		return podSelection{}, "", nil, nil, err
 	}
 
-	return sel, containerName, initDef, nil
+	return sel, containerName, initDef, meta, nil
 }
 
 // validateServiceName checks that a service name exists in the image's service list.
@@ -120,18 +120,26 @@ func validateServiceName(engine spec.EngineName, containerName, serviceName stri
 // <op> [svc]` argv the host will run over LifecycleTarget.Shell — the plugin-side twin of the
 // former core execInitCommand, minus the dispatch step itself.
 func buildServiceArgv(ctx context.Context, box, instance, operation, service string) ([]string, error) {
-	sel, containerName, initDef, err := resolveServiceInit(ctx, box, instance)
+	argv, _, err := buildServiceArgvMeta(ctx, box, instance, operation, service)
+	return argv, err
+}
+
+// buildServiceArgvMeta is buildServiceArgv's form that also hands back the image metadata it
+// already resolved, for the ONE caller that must JUDGE the run: `charly service status` compares
+// the init tool's table against the image's declared services (service_status.go).
+func buildServiceArgvMeta(ctx context.Context, box, instance, operation, service string) ([]string, *spec.BoxMetadata, error) {
+	sel, containerName, initDef, meta, err := resolveServiceInit(ctx, box, instance)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if operation != "status" {
 		if err := validateServiceName(sel.Engine(), containerName, service); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	rendered, err := initRenderManagementCommand(initDef, operation, service)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return append([]string{sel.binary(), "exec", containerName, initDef.ManagementTool}, strings.Fields(rendered)...), nil
+	return append([]string{sel.binary(), "exec", containerName, initDef.ManagementTool}, strings.Fields(rendered)...), meta, nil
 }

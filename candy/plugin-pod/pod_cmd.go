@@ -260,11 +260,17 @@ type ServiceStatusCmd struct {
 }
 
 func (c *ServiceStatusCmd) Run() error {
-	argv, err := buildServiceArgv(cmdCtx, c.Box, c.Instance, "status", "")
+	argv, meta, err := buildServiceArgvMeta(cmdCtx, c.Box, c.Instance, "status", "")
 	if err != nil {
 		return err
 	}
-	return hostPodLifecycle("service", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodServicePayload{Argv: argv})
+	reply, err := hostPodLifecycleReply("service", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodServicePayload{Argv: argv})
+	if reply.Output != "" {
+		// A host that captures the table leaves printing to us; one that does not (an older
+		// charly) printed it already and sends no output — print only what we were handed.
+		fmt.Print(reply.Output)
+	}
+	return serviceStatusVerdict(meta, reply, err)
 }
 
 // ServiceStartCmd starts a service
@@ -279,7 +285,8 @@ func (c *ServiceStartCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	return hostPodLifecycle("service", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodServicePayload{Argv: argv})
+	reply, err := hostPodLifecycleReply("service", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodServicePayload{Argv: argv})
+	return serviceRunVerdict(reply, err)
 }
 
 // ServiceStopCmd stops a service
@@ -294,7 +301,8 @@ func (c *ServiceStopCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	return hostPodLifecycle("service", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodServicePayload{Argv: argv})
+	reply, err := hostPodLifecycleReply("service", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodServicePayload{Argv: argv})
+	return serviceRunVerdict(reply, err)
 }
 
 // ServiceRestartCmd restarts a service
@@ -309,7 +317,8 @@ func (c *ServiceRestartCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	return hostPodLifecycle("service", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodServicePayload{Argv: argv})
+	reply, err := hostPodLifecycleReply("service", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodServicePayload{Argv: argv})
+	return serviceRunVerdict(reply, err)
 }
 
 // VolumeCmd groups the named-volume verbs — the `charly volume` grammar. NOT registry-bound (pure
