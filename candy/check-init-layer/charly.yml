@@ -24,10 +24,11 @@ check-init-layer:
                 command: "test -x /usr/local/bin/check-init-once"
                 in_container: true
               context:
-                - runtime
+                - build
         service:
             - name: check-init
-              exec: /usr/local/bin/check-init-once
+              exec: /bin/sh -c 'sleep 2'
+              type: oneshot
               restart: no
               priority: 15
               start_sec: 0

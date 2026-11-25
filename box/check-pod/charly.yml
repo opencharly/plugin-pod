@@ -35,8 +35,6 @@ check-pod:
             # into the image. The examplebuilder-build-baked check below proves it executed.
             - '@github.com/opencharly/plugin-example-builder/candy/plugin-example-builder:v2026.272.0107'
             - '@github.com/opencharly/layer-examplebuilder-consumer:v2026.272.0058'
-            # The run-to-completion service the service-status step judges (candy/check-init-layer).
-            - check-init-layer
         plan:
             - check: the examplebuilder external builder plugin EXECUTED at image build — its OpResolve emitted a multi-stage builder that COPYd /opt/examplebuilder-artifact into the check-pod image (proves the build-time external-BUILDER seam emitExternalBuilderStages + Invoke(OpResolve))
               id: examplebuilder-build-baked

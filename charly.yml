@@ -29,6 +29,27 @@ discover:
 
 # check-pod — the canonical fast pod-runtime R10 bed. See box/check-pod/charly.yml for
 # the fixture image it deploys.
+# check-service-status — the minimal bed for the `charly service status` verdict
+# (opencharly/charly#1271): one long-running service beside a declared run-to-completion one, and no
+# build-time plugin candy, so it builds independently of the plugin pins a spec bump can skew.
+check-service-status:
+    pod:
+        image: check-service-status
+        disposable: true
+        lifecycle: dev
+        description: Sole bed proving that `charly service status` judges the init tool's table instead of propagating its aggregate exit code — the fixture declares one run-to-completion service (check-init, restart no / start_sec 0 / exit_code 0) beside a long-running one, so the tool exits 3 on a HEALTHY pod and the verb must exit 0 and print the EXITED row.
+        plan:
+            - check: charly service status exits 0 on a healthy pod whose image declares a run-to-completion service — the init tool exits 3 because check-init EXITED, and the verdict judges that against the declaration instead of propagating the code
+              id: service-status-oneshot-healthy
+              exit_status: 0
+              stdout:
+                - contains: "check-init"
+                - contains: "EXITED"
+              context:
+                - runtime
+              command:
+                command: ${CHARLY_BIN} service status check-service-status
+                in_container: false
 check-pod:
     pod:
         image: check-pod
@@ -47,14 +68,3 @@ check-pod:
                 command: ${CHARLY_BIN} status --json
                 in_container: false
 
-            - check: charly service status exits 0 on a healthy pod whose image declares a run-to-completion service — the init tool exits 3 because check-init EXITED, and the verb judges that against the image's declaration instead of propagating the code
-              id: service-status-oneshot-healthy
-              exit_status: 0
-              stdout:
-                - contains: "check-init"
-                - contains: "EXITED"
-              context:
-                - runtime
-              command:
-                command: ${CHARLY_BIN} service status check-pod
-                in_container: false
