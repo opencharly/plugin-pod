@@ -46,3 +46,15 @@ check-pod:
               command:
                 command: ${CHARLY_BIN} status --json
                 in_container: false
+
+            - check: charly service status exits 0 on a healthy pod whose image declares a run-to-completion service — the init tool exits 3 because check-init EXITED, and the verb judges that against the image's declaration instead of propagating the code
+              id: service-status-oneshot-healthy
+              exit_status: 0
+              stdout:
+                - contains: "check-init"
+                - contains: "EXITED"
+              context:
+                - runtime
+              command:
+                command: ${CHARLY_BIN} service status check-pod
+                in_container: false
