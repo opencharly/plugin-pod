@@ -97,6 +97,22 @@ func hostPodLifecycle(op, box, instance string, node *spec.Deploy, payload any) 
 	return hostPodSeam("pod-lifecycle", spec.PodLifecycleRequest{Op: op, Box: box, Instance: instance, Node: node, Payload: b})
 }
 
+// hostPodLifecycleReply is hostPodLifecycle's reply-capturing form, for the ONE op whose caller
+// must JUDGE the result instead of only propagating it: op="service". The host captures the init
+// tool's stdout into the reply's output, and reports its exit code in exit_code rather than as an
+// error, so `charly service status` can tell a finished run-to-completion service (a declared
+// one-shot that exited 0) from a dead long-running one — a distinction only this side can make,
+// because the declaration is image metadata this plugin reads.
+func hostPodLifecycleReply(op, box, instance string, node *spec.Deploy, payload any) (spec.PodLifecycleReply, error) {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return spec.PodLifecycleReply{}, err
+	}
+	var reply spec.PodLifecycleReply
+	err = hostPodSeamReply("pod-lifecycle", spec.PodLifecycleRequest{Op: op, Box: box, Instance: instance, Node: node, Payload: b}, &reply)
+	return reply, err
+}
+
 // hostPodSeamReply is hostPodSeam's reply-capturing sibling (R3: mirrors
 // candy/plugin-deploy-pod/config_setup.go's identically-shaped `hostBuild` helper — that one is
 // package-private to plugin-deploy-pod, so this module needs its own copy rather than an import)

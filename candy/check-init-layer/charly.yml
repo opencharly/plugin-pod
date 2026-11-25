@@ -1,0 +1,40 @@
+check-init-layer:
+    candy:
+        description: |-
+            Check fixture layer: a run-to-completion (one-shot) service beside the bed's long-running one.
+            Declares `check-init`, which runs to completion and exits 0 (`restart: no`, `start_sec: 0`,
+            `exit_code: "0"`) — the shape `pod-immich`'s `immich-db-init` has. Supervisord reports it as
+            EXITED, so `supervisorctl status` exits 3 on a HEALTHY pod; the `check-pod` bed uses it to
+            prove that `charly service status` judges the table rather than the tool's aggregate exit code
+            (opencharly/charly#1271).
+        plan:
+            - run: install the one-shot service's body
+              write: /usr/local/bin/check-init-once
+              content: |
+                  #!/bin/sh
+                  # Runs to completion: the pod's health must not depend on this process staying alive.
+                  # It takes a couple of seconds, as a real migration does — supervisord treats a
+                  # process that exits inside its start window as failed.
+                  sleep 2
+                  echo "check-init ran"
+                  exit 0
+              mode: "0755"
+              run_as: root
+            - check: the one-shot service's body is installed and executable
+              id: check-init-installed
+              exit_status: 0
+              command:
+                command: "test -x /usr/local/bin/check-init-once"
+                in_container: true
+              context:
+                - build
+        service:
+            - name: check-init
+              exec: /usr/local/bin/check-init-once
+              type: oneshot
+              restart: no
+              priority: 15
+              start_sec: 0
+              exit_code: "0"
+              enable: true
+              scope: system

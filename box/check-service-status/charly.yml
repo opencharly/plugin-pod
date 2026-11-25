@@ -1,0 +1,27 @@
+check-service-status:
+    candy:
+        base: quay.io/fedora/fedora-minimal:43
+        produce: []
+        description: |-
+            Minimal pod fixture for the service-status verdict (opencharly/charly#1271)
+            One supervisord with two services — a long-running one and a declared run-to-completion one — and NO
+            build-time plugin candy, so the fixture builds independently of the plugin pins a spec bump can skew.
+        distro:
+            - fedora:43
+            - fedora
+        candy:
+            - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
+            # The PROVEN pair the check-pod bed already runs: the base marker layer and the stack
+            # layer that declares the long-running `check-sleep` service.
+            - '@github.com/opencharly/layer-check-base-layer:v2026.271.2234'
+            - '@github.com/opencharly/layer-check-stack-layer:v2026.271.2308'
+            - check-init-layer
+        plan:
+            - check: the one-shot service's body is installed and executable at build
+              id: check-service-status-init-installed
+              exit_status: 0
+              command:
+                command: "test -x /usr/local/bin/check-init-once"
+                in_container: true
+              context:
+                - build
