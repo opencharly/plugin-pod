@@ -66,7 +66,11 @@ func (c *StartCmd) Run() error {
 	if spec.IsRemoteImageRef(kit.StripURLScheme(c.Box)) {
 		return fmt.Errorf("remote refs are not accepted here; run 'charly box pull %s' first, then 'charly start <image-name>'", c.Box)
 	}
-	c.Box, c.Instance = deploykit.CanonicalizeDeployArg(c.Box, c.Instance)
+	addrBox, addrInst, aerr := resolveDeployAddress(c.Box, c.Instance)
+	if aerr != nil {
+		return aerr
+	}
+	c.Box, c.Instance = addrBox, addrInst
 	if err := deploykit.RejectImageRefAsDeployName(c.Box); err != nil {
 		return err
 	}
@@ -104,7 +108,11 @@ type StopCmd struct {
 }
 
 func (c *StopCmd) Run() error {
-	c.Box, c.Instance = deploykit.CanonicalizeDeployArg(c.Box, c.Instance)
+	addrBox, addrInst, aerr := resolveDeployAddress(c.Box, c.Instance)
+	if aerr != nil {
+		return aerr
+	}
+	c.Box, c.Instance = addrBox, addrInst
 	// Resolve the image name (handle remote refs).
 	boxName := c.Box
 	ref := kit.StripURLScheme(c.Box)
@@ -147,7 +155,11 @@ type LogsCmd struct {
 }
 
 func (c *LogsCmd) Run() error {
-	c.Box, c.Instance = deploykit.CanonicalizeDeployArg(c.Box, c.Instance)
+	addrBox, addrInst, aerr := resolveDeployAddress(c.Box, c.Instance)
+	if aerr != nil {
+		return aerr
+	}
+	c.Box, c.Instance = addrBox, addrInst
 	return hostPodLifecycle("logs", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodLogsPayload{
 		Follow:  c.Follow,
 		Sidecar: c.Sidecar,
@@ -176,7 +188,11 @@ type RemoveCmd struct {
 }
 
 func (c *RemoveCmd) Run() error {
-	c.Box, c.Instance = deploykit.CanonicalizeDeployArg(c.Box, c.Instance)
+	addrBox, addrInst, aerr := resolveDeployAddress(c.Box, c.Instance)
+	if aerr != nil {
+		return aerr
+	}
+	c.Box, c.Instance = addrBox, addrInst
 	boxName := kit.ResolveBoxName(c.Box)
 	defer func() {
 		_ = hostPodLifecycle("remove", boxName, c.Instance, nil, spec.PodRemovePayload{})
@@ -226,7 +242,11 @@ func (c *ShellCmd) Run() error {
 	if spec.IsRemoteImageRef(kit.StripURLScheme(c.Box)) {
 		return fmt.Errorf("remote refs are not accepted here; run 'charly box pull %s' first, then 'charly shell <image-name>'", c.Box)
 	}
-	c.Box, c.Instance = deploykit.CanonicalizeDeployArg(c.Box, c.Instance)
+	addrBox, addrInst, aerr := resolveDeployAddress(c.Box, c.Instance)
+	if aerr != nil {
+		return aerr
+	}
+	c.Box, c.Instance = addrBox, addrInst
 	return hostPodLifecycle("shell", c.Box, c.Instance, lifecycleNode(c.Box, c.Instance), spec.PodShellPayload{
 		Tag:          c.Tag,
 		Command:      c.Command,
@@ -605,7 +625,11 @@ func (c *UpdateCmd) Run() error {
 	if spec.IsRemoteImageRef(kit.StripURLScheme(c.Box)) {
 		return fmt.Errorf("remote refs are not accepted here; run 'charly box pull %s' first", c.Box)
 	}
-	c.Box, c.Instance = deploykit.CanonicalizeDeployArg(c.Box, c.Instance)
+	addrBox, addrInst, aerr := resolveDeployAddress(c.Box, c.Instance)
+	if aerr != nil {
+		return aerr
+	}
+	c.Box, c.Instance = addrBox, addrInst
 	// Resolve the deploy node PLUGIN-SIDE (merged tree → full deploy key) and thread the node
 	// into the seam as DATA — the K-wave 2 cone CONTESTED completion of the #55 Cone A Unit 3b
 	// tree-threading: the host's dispatchByDeployTarget needs the node, not the whole tree.
