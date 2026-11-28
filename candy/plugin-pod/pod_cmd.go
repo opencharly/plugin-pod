@@ -136,6 +136,11 @@ type RestartCmd struct {
 }
 
 func (c *RestartCmd) Run() error {
+	addrBox, addrInst, aerr := resolveDeployAddress(c.Box, c.Instance)
+	if aerr != nil {
+		return aerr
+	}
+	c.Box, c.Instance = addrBox, addrInst
 	boxName := c.Box
 	ref := kit.StripURLScheme(c.Box)
 	if spec.IsRemoteImageRef(ref) {
